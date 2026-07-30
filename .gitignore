@@ -1,0 +1,63 @@
+# --------------------------------
+# v0 / Freebuff internal files
+# --------------------------------
+__v0_runtime_loader.js
+__v0_devtools.tsx
+__v0_jsx-dev-runtime.ts
+.snowflake/
+.v0-trash/
+.vercel/
+.freebuff/
+
+# --------------------------------
+# Environment variables
+# --------------------------------
+.env*.local
+
+# --------------------------------
+# Dependencies
+# --------------------------------
+node_modules/
+
+# --------------------------------
+# Next.js build output & cache
+# --------------------------------
+.next/
+out/
+
+# --------------------------------
+# Electron / Desktop build output
+# --------------------------------
+release/
+dist/
+
+# --------------------------------
+# OS files
+# --------------------------------
+.DS_Store
+Thumbs.db
+
+# --------------------------------
+# TypeScript cache
+# --------------------------------
+tsconfig.tsbuildinfo
+next-env.d.ts
+
+# --------------------------------
+# Security-sensitive: DO NOT COMMIT
+# --------------------------------
+build/*.pfx
+build/*.p12
+
+# --------------------------------
+# Lock file (project uses pnpm, not npm)
+# --------------------------------
+package-lock.json
+
+# --------------------------------
+# Logs & debug
+# --------------------------------
+*.log
+npm-debug.log*
+builder-debug.yml
+builder-effective-config.yaml
