@@ -100,9 +100,14 @@ type Store = {
   setTaskStatus: (id: string, status: TaskStatus) => void
 
   habits: Habit[]
+  addHabit: (name: string, week?: boolean[]) => void
+  deleteHabit: (id: string) => void
   toggleHabit: (id: string) => void
 
   goals: Goal[]
+  addGoal: (name: string, progress?: number) => void
+  updateGoal: (id: string, updates: Partial<Goal>) => void
+  deleteGoal: (id: string) => void
   events: EventItem[]
   addEvent: (e: Omit<EventItem, "id">) => void
   updateEvent: (id: string, updates: Partial<EventItem>) => void
@@ -166,7 +171,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [search, setSearch] = useState("")
   const [tasks, setTasks] = useLocalStorage<Task[]>("tasks", initialTasks)
   const [habits, setHabits] = useLocalStorage<Habit[]>("habits", initialHabits)
-  const [goals] = useLocalStorage<Goal[]>("goals", initialGoals)
+  const [goals, setGoals] = useLocalStorage<Goal[]>("goals", initialGoals)
   const [events, setEvents] = useLocalStorage<EventItem[]>("events", initialEvents)
   const [notes, setNotes] = useLocalStorage<Note[]>("notes", initialNotes)
   const [notifications, setNotifications] = useLocalStorage<AppNotification[]>("notifications", initialNotifications)
@@ -300,6 +305,43 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     )
   }, [])
 
+  const addHabit = useCallback<Store["addHabit"]>((name, week) => {
+    setHabits((prev) => [
+      { id: `h-${Date.now()}`, name, streak: 0, doneToday: false, week: week ?? [true, true, true, true, true, true, false] },
+      ...prev,
+    ])
+  }, [])
+
+  const deleteHabit = useCallback((id: string) => {
+    setHabits((prev) => prev.filter((h) => h.id !== id))
+  }, [])
+
+  const addGoal = useCallback<Store["addGoal"]>((name, progress) => {
+    setGoals((prev) => [
+      {
+        id: `g-${Date.now()}`,
+        name,
+        progress: progress ?? 0,
+        status: "on-track",
+      },
+      ...prev,
+    ])
+  }, [])
+
+  const updateGoal = useCallback((id: string, updates: Partial<Goal>) => {
+    setGoals((prev) =>
+      prev.map((g) => {
+        if (g.id !== id) return g
+        const progress = updates.progress ?? g.progress
+        return { ...g, ...updates, status: progress >= 50 ? "on-track" : "at-risk" }
+      }),
+    )
+  }, [])
+
+  const deleteGoal = useCallback((id: string) => {
+    setGoals((prev) => prev.filter((g) => g.id !== id))
+  }, [])
+
   const addNote = useCallback<Store["addNote"]>((n) => {
     setNotes((prev) => [
       { id: `n-${Date.now()}`, updated: "just now", ...n },
@@ -345,8 +387,13 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       cycleTaskStatus,
       setTaskStatus,
       habits,
+      addHabit,
+      deleteHabit,
       toggleHabit,
       goals,
+      addGoal,
+      updateGoal,
+      deleteGoal,
       events,
       addEvent,
       updateEvent,
@@ -381,8 +428,9 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       resetTimer,
     }),
     [
-      view, search, tasks, addTask, deleteTask, reorderTasks, cycleTaskStatus, setTaskStatus, habits, toggleHabit,
-      goals, events, addEvent, updateEvent, deleteEvent, notes, addNote, deleteNote, notifications, markRead, markAllRead,
+      view, search, tasks, addTask, deleteTask, reorderTasks, cycleTaskStatus, setTaskStatus, habits, addHabit,
+      deleteHabit, toggleHabit, goals, addGoal, updateGoal, deleteGoal, events, addEvent, updateEvent, deleteEvent,
+      notes, addNote, deleteNote, notifications, markRead, markAllRead,
       focusMode, toggleFocusMode, userName, setUserName, avatarUrl, setAvatarUrl, showTour, dismissTour, sessionCount,
       secondsLeft, totalSeconds, running, mode, pomodoro, sessionLabel,
       startTimer, pauseTimer, toggleTimer, skipTimer, stopTimer, resetTimer,

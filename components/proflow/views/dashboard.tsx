@@ -89,7 +89,7 @@ export function Dashboard() {
     [reorderTasks],
   )
   const habitsToday = habits.filter((h) => h.doneToday).length
-  const goalAvg = Math.round(goals.reduce((s, g) => s + g.progress, 0) / goals.length)
+  const goalAvg = goals.length ? Math.round(goals.reduce((s, g) => s + g.progress, 0) / goals.length) : 0
   const onTrack = goals.filter((g) => g.status === "on-track").length
   const atRisk = goals.filter((g) => g.status === "at-risk").length
 
