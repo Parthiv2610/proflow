@@ -179,6 +179,7 @@ type Store = {
 
   showTour: boolean
   dismissTour: () => void
+  startTour: () => void
   sessionCount: number
 
   // focus mode
@@ -318,9 +319,11 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     showNotification("ProFlow", bits.join(" · "))
   }, [prefs, tasks, events])
 
-  // welcome tour
-  const [showTour, setShowTour] = useLocalStorage("showTour", true)
+  // welcome tour — defaults to OFF so the app never opens on a blocking overlay;
+  // it's started manually from Settings → "Take the tour".
+  const [showTour, setShowTour] = useLocalStorage("showTour", false)
   const dismissTour = useCallback(() => setShowTour(false), [])
+  const startTour = useCallback(() => setShowTour(true), [])
 
   // onboarding tooltips — session counter (increments on mount, caps at 5)
   const [sessionCount, setSessionCount] = useLocalStorage("sessionCount", 0)
@@ -821,6 +824,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       togglePref,
       showTour,
       dismissTour,
+      startTour,
       sessionCount,
       focusMode,
       toggleFocusMode,
@@ -861,7 +865,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       deleteHabit, toggleHabit, goals, addGoal, updateGoal, deleteGoal, events, addEvent, updateEvent, deleteEvent,
       notes, addNote, deleteNote, notifications, markRead, markAllRead,
       focusMode, toggleFocusMode, userName, setUserName, avatarUrl, setAvatarUrl,
-      theme, setTheme, prefs, togglePref, showTour, dismissTour, sessionCount,
+      theme, setTheme, prefs, togglePref, showTour, dismissTour, startTour, sessionCount,
       lanInfo, lanAuthed, lanOnline, lanBusy, lanError, lastSyncedAt, lanGateOpen,
       enableLan, disableLan, regenLanPasscode, submitLanPasscode, disconnectPhone, openLanGate, closeLanGate,
       secondsLeft, totalSeconds, running, mode, pomodoro, sessionLabel,

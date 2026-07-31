@@ -10,6 +10,7 @@ import {
   Loader2,
   Copy,
   Smartphone,
+  Sparkles,
   Unlink,
   Wifi,
   WifiOff,
@@ -40,7 +41,7 @@ function Switch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 }
 
 export function SettingsView() {
-  const { userName, setUserName, avatarUrl, setAvatarUrl, theme, setTheme, prefs, togglePref } = useStore()
+  const { userName, setUserName, avatarUrl, setAvatarUrl, theme, setTheme, prefs, togglePref, startTour } = useStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -72,6 +73,14 @@ export function SettingsView() {
       <div className="mt-6 flex flex-col gap-4">
         <Card>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Profile</h2>
+          <button
+            type="button"
+            onClick={startTour}
+            className="mt-3 flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Sparkles className="size-3.5" />
+            Take the welcome tour
+          </button>
           <div className="mt-4 flex items-center gap-4">
             {/* Avatar */}
             <div className="group relative size-14 shrink-0">

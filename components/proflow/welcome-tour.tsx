@@ -112,9 +112,13 @@ export function WelcomeTour() {
   if (!showTour) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      onClick={dismissTour}
+    >
       {/* Card */}
       <div
+        onClick={(e) => e.stopPropagation()}
         className={cn(
           "relative w-full max-w-lg overflow-hidden rounded-2xl border border-border",
           "bg-gradient-to-b from-card to-sidebar text-foreground shadow-2xl",
