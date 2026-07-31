@@ -3,6 +3,8 @@ const path = require("path")
 const fs = require("fs")
 const https = require("https")
 const http = require("http")
+const os = require("os")
+const { startLanServer, getLanIPs, generatePasscode } = require("./lan-server")
 
 const isDev = !app.isPackaged
 
@@ -110,6 +112,85 @@ function showUpdateDialog(manifest) {
 // Create the main window
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// LAN Sync — serve the app + a sync endpoint over WiFi for phone access
+// ---------------------------------------------------------------------------
+
+const LAN_STATE_FILE = () => path.join(app.getPath("userData"), "lan-state.json")
+
+let lanServer = null // running server handle (null when disabled)
+let mainWindow = null
+
+function loadLanMeta() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(LAN_STATE_FILE(), "utf-8"))
+    return { passcode: parsed.passcode || "" }
+  } catch {
+    return { passcode: "" }
+  }
+}
+
+let lanMeta = loadLanMeta()
+
+function persistLanMeta() {
+  try {
+    fs.mkdirSync(path.dirname(LAN_STATE_FILE()), { recursive: true })
+    const existing = fs.existsSync(LAN_STATE_FILE())
+      ? JSON.parse(fs.readFileSync(LAN_STATE_FILE(), "utf-8"))
+      : {}
+    fs.writeFileSync(
+      LAN_STATE_FILE(),
+      JSON.stringify({ ...existing, passcode: lanMeta.passcode || "" }),
+    )
+  } catch {
+    // best effort
+  }
+}
+
+function getLanStatus() {
+  const ip = getLanIPs()[0] || null
+  return {
+    enabled: !!lanServer,
+    url: lanServer && ip ? `http://${ip}:${lanServer.port}` : null,
+    ip,
+    port: lanServer ? lanServer.port : 5174,
+    passcode: lanMeta.passcode || "",
+    host: os.hostname(),
+  }
+}
+
+function broadcastToRenderer(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("lan:remote", payload)
+  }
+}
+
+async function setLanEnabled(enabled) {
+  if (enabled && !lanServer) {
+    if (!lanMeta.passcode) {
+      lanMeta.passcode = generatePasscode()
+      persistLanMeta()
+    }
+    try {
+      lanServer = await startLanServer({
+        port: 5174,
+        outDir: path.join(__dirname, "..", "out"),
+        stateFile: LAN_STATE_FILE(),
+        passcode: lanMeta.passcode,
+        onRemoteChange: (merged) => broadcastToRenderer({ type: "snapshot", snapshot: merged }),
+      })
+      return getLanStatus()
+    } catch (err) {
+      return { ...getLanStatus(), error: String(err && err.message ? err.message : err) }
+    }
+  }
+  if (!enabled && lanServer) {
+    await lanServer.stop()
+    lanServer = null
+  }
+  return getLanStatus()
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
@@ -192,6 +273,11 @@ function createWindow() {
     win.loadFile(path.join(__dirname, "..", "out", "index.html"))
   }
 
+  mainWindow = win
+  win.on("closed", () => {
+    if (mainWindow === win) mainWindow = null
+  })
+
   return win
 }
 
@@ -221,12 +307,40 @@ ipcMain.handle("download-update", async (_event, url) => {
   if (url) shell.openExternal(url)
 })
 
+// LAN Sync IPC
+ipcMain.handle("lan:get-status", () => getLanStatus())
+
+ipcMain.handle("lan:set-enabled", async (_event, enabled) => setLanEnabled(!!enabled))
+
+ipcMain.handle("lan:push", (_event, snapshot) => {
+  if (!lanServer || !snapshot) return false
+  try {
+    // The laptop's own changes are merged into the shared state and persisted.
+    // The phone picks them up on its next poll — no broadcast needed here.
+    lanServer.mergeIncoming(snapshot)
+    return true
+  } catch {
+    return false
+  }
+})
+
+ipcMain.handle("lan:regen-passcode", async () => {
+  lanMeta.passcode = generatePasscode()
+  persistLanMeta()
+  if (lanServer) lanServer.setPasscode(lanMeta.passcode)
+  return getLanStatus()
+})
+
 // ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(async () => {
   const win = createWindow()
+
+  // The LAN server is (re)started by the renderer on startup if the user had
+  // it enabled — the preference lives in the renderer's localStorage and is
+  // replayed through lan:set-enabled once the window loads.
 
   // Check for updates on startup (only in production, after a short delay)
   if (!isDev) {

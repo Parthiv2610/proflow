@@ -9,4 +9,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   checkForUpdate: () => ipcRenderer.invoke("check-for-update"),
   downloadUpdate: (url) => ipcRenderer.invoke("download-update", url),
+
+  // LAN Sync
+  lanGetStatus: () => ipcRenderer.invoke("lan:get-status"),
+  lanSetEnabled: (enabled) => ipcRenderer.invoke("lan:set-enabled", enabled),
+  lanPush: (snapshot) => ipcRenderer.invoke("lan:push", snapshot),
+  lanRegenPasscode: () => ipcRenderer.invoke("lan:regen-passcode"),
+  onLanRemote: (callback) => {
+    const listener = (_event, data) => callback(data)
+    ipcRenderer.on("lan:remote", listener)
+    return () => ipcRenderer.removeListener("lan:remote", listener)
+  },
 })

@@ -10,6 +10,17 @@ import {
   useState,
 } from "react"
 import { useLocalStorage } from "@/lib/use-local-storage"
+import {
+  clearPasscode,
+  detectLan,
+  getStoredEnabled,
+  lanPull,
+  lanPushSnapshot,
+  setStoredEnabled,
+  storePasscode,
+  type LanInfo,
+  type SyncSnapshot,
+} from "@/lib/lan-sync"
 
 export type View =
   | "dashboard"
@@ -133,6 +144,22 @@ type Store = {
   focusMode: boolean
   toggleFocusMode: () => void
 
+  // LAN sync (phone ↔ laptop over Wi-Fi, no account)
+  lanInfo: LanInfo | null
+  lanAuthed: boolean
+  lanOnline: boolean
+  lanBusy: boolean
+  lanError: string | null
+  lastSyncedAt: number | null
+  lanGateOpen: boolean
+  enableLan: () => Promise<void>
+  disableLan: () => Promise<void>
+  regenLanPasscode: () => Promise<void>
+  submitLanPasscode: (code: string) => Promise<"ok" | "wrong-code" | "unreachable">
+  disconnectPhone: () => void
+  openLanGate: () => void
+  closeLanGate: () => void
+
   // timer
   secondsLeft: number
   totalSeconds: number
@@ -169,15 +196,41 @@ const initialNotifications: AppNotification[] = []
 export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [view, setView] = useState<View>("dashboard")
   const [search, setSearch] = useState("")
-  const [tasks, setTasks] = useLocalStorage<Task[]>("tasks", initialTasks)
-  const [habits, setHabits] = useLocalStorage<Habit[]>("habits", initialHabits)
-  const [goals, setGoals] = useLocalStorage<Goal[]>("goals", initialGoals)
-  const [events, setEvents] = useLocalStorage<EventItem[]>("events", initialEvents)
-  const [notes, setNotes] = useLocalStorage<Note[]>("notes", initialNotes)
-  const [notifications, setNotifications] = useLocalStorage<AppNotification[]>("notifications", initialNotifications)
+  const [tasks, setRawTasks] = useLocalStorage<Task[]>("tasks", initialTasks)
+  const [habits, setRawHabits] = useLocalStorage<Habit[]>("habits", initialHabits)
+  const [goals, setRawGoals] = useLocalStorage<Goal[]>("goals", initialGoals)
+  const [events, setRawEvents] = useLocalStorage<EventItem[]>("events", initialEvents)
+  const [notes, setRawNotes] = useLocalStorage<Note[]>("notes", initialNotes)
+  const [notifications, setRawNotifications] = useLocalStorage<AppNotification[]>("notifications", initialNotifications)
 
   // user name
-  const [userName, setUserName] = useLocalStorage("userName", "You")
+  const [userName, setRawUserName] = useLocalStorage("userName", "You")
+
+  // ── LAN sync plumbing (version-bumping setters) ────────────────
+  const versionsRef = useRef<Record<string, number>>({})
+  const lastPushedRef = useRef<Record<string, number>>({})
+  const appliedKeysRef = useRef<Set<string>>(new Set())
+  const applyingRemoteRef = useRef(false)
+  const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const snapRef = useRef<SyncSnapshot>({ collections: {} })
+  const prevReachableRef = useRef(false)
+
+  // Local mutations bump that collection's version (remote applies don't),
+  // which is what makes merges last-write-wins *per collection*.
+  const wrapSetter =
+    <T,>(key: string, setter: React.Dispatch<React.SetStateAction<T>>) =>
+    (u: React.SetStateAction<T>) => {
+      if (!applyingRemoteRef.current) versionsRef.current[key] = Date.now()
+      setter(u)
+    }
+
+  const setTasks = wrapSetter<Task[]>("tasks", setRawTasks)
+  const setHabits = wrapSetter<Habit[]>("habits", setRawHabits)
+  const setGoals = wrapSetter<Goal[]>("goals", setRawGoals)
+  const setEvents = wrapSetter<EventItem[]>("events", setRawEvents)
+  const setNotes = wrapSetter<Note[]>("notes", setRawNotes)
+  const setNotifications = wrapSetter<AppNotification[]>("notifications", setRawNotifications)
+  const setUserName = wrapSetter<string>("userName", setRawUserName)
   const [avatarUrl, setAvatarUrl] = useLocalStorage("avatarUrl", "")
 
   // welcome tour
@@ -195,6 +248,248 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [focusMode, setFocusMode] = useState(false)
   const toggleFocusMode = useCallback(() => setFocusMode((prev) => !prev), [])
 
+  // ── LAN sync (phone ↔ laptop over Wi-Fi, no account) ───────────
+  const [lanInfo, setLanInfo] = useState<LanInfo | null>(null)
+  const [lanAuthed, setLanAuthed] = useState(false)
+  const [lanOnline, setLanOnline] = useState(false)
+  const [lanBusy, setLanBusy] = useState(false)
+  const [lanGateOpen, setLanGateOpen] = useState(false)
+  const [lanError, setLanError] = useState<string | null>(null)
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null)
+
+  const lanActive = useMemo(
+    () =>
+      lanInfo?.mode === "electron" ? !!lanInfo.enabled : lanInfo?.mode === "phone" ? lanAuthed : false,
+    [lanInfo, lanAuthed],
+  )
+
+  // Live snapshot of everything syncable.
+  useEffect(() => {
+    snapRef.current = {
+      collections: {
+        tasks: { v: versionsRef.current.tasks ?? 0, items: tasks },
+        habits: { v: versionsRef.current.habits ?? 0, items: habits },
+        goals: { v: versionsRef.current.goals ?? 0, items: goals },
+        events: { v: versionsRef.current.events ?? 0, items: events },
+        notes: { v: versionsRef.current.notes ?? 0, items: notes },
+        notifications: { v: versionsRef.current.notifications ?? 0, items: notifications },
+        userName: { v: versionsRef.current.userName ?? 0, items: userName },
+      },
+    }
+  }, [tasks, habits, goals, events, notes, notifications, userName])
+
+  // Merge a remote snapshot — per-collection last-write-wins.
+  // Uses the RAW setters; version bumps happen explicitly here.
+  const applyRemote = useCallback(
+    (snap: SyncSnapshot | null | undefined): boolean => {
+      const cols = snap?.collections ?? {}
+      let applied = false
+      const apply = <T,>(key: string, items: unknown, setter: (v: T) => void) => {
+        const v = cols[key]?.v ?? 0
+        if (v > (versionsRef.current[key] ?? 0)) {
+          versionsRef.current[key] = v
+          appliedKeysRef.current.add(key)
+          // Only set when something is actually applied — a stale flag would
+          // swallow the version bump of the next genuine local edit.
+          applyingRemoteRef.current = true
+          applied = true
+          setter(items as T)
+        }
+      }
+      apply<Task[]>("tasks", cols.tasks?.items, setRawTasks)
+      apply<Habit[]>("habits", cols.habits?.items, setRawHabits)
+      apply<Goal[]>("goals", cols.goals?.items, setRawGoals)
+      apply<EventItem[]>("events", cols.events?.items, setRawEvents)
+      apply<Note[]>("notes", cols.notes?.items, setRawNotes)
+      apply<AppNotification[]>("notifications", cols.notifications?.items, setRawNotifications)
+      apply<string>("userName", cols.userName?.items, setRawUserName)
+      return applied
+    },
+    [
+      setRawTasks,
+      setRawHabits,
+      setRawGoals,
+      setRawEvents,
+      setRawNotes,
+      setRawNotifications,
+      setRawUserName,
+    ],
+  )
+
+  // Actions
+  const enableLan = useCallback(async () => {
+    const api = (window as any).electronAPI
+    if (!api?.lanSetEnabled) return
+    setLanBusy(true)
+    try {
+      const status = await api.lanSetEnabled(true)
+      setStoredEnabled(!!status.enabled)
+      setLanError(status.error ? String(status.error) : null)
+      setLanInfo((prev) =>
+        prev
+          ? {
+              ...prev,
+              enabled: status.enabled,
+              url: status.url,
+              ip: status.ip,
+              port: status.port,
+              passcode: status.passcode,
+            }
+          : prev,
+      )
+    } finally {
+      setLanBusy(false)
+    }
+  }, [])
+
+  const disableLan = useCallback(async () => {
+    const api = (window as any).electronAPI
+    if (!api?.lanSetEnabled) return
+    setLanBusy(true)
+    try {
+      const status = await api.lanSetEnabled(false)
+      setStoredEnabled(false)
+      setLanError(null)
+      setLanInfo((prev) => (prev ? { ...prev, enabled: false, url: null } : prev))
+    } finally {
+      setLanBusy(false)
+    }
+  }, [])
+
+  const regenLanPasscode = useCallback(async () => {
+    const api = (window as any).electronAPI
+    if (!api?.lanRegenPasscode) return
+    const status = await api.lanRegenPasscode()
+    setLanInfo((prev) => (prev ? { ...prev, passcode: status.passcode } : prev))
+  }, [])
+
+  const submitLanPasscode = useCallback(
+    async (code: string): Promise<"ok" | "wrong-code" | "unreachable"> => {
+      storePasscode(code.trim())
+      const { authed, reachable } = await lanPull()
+      setLanAuthed(authed)
+      if (authed) {
+        setLanGateOpen(false)
+        return "ok"
+      }
+      return reachable ? "wrong-code" : "unreachable"
+    },
+    [],
+  )
+
+  const disconnectPhone = useCallback(() => {
+    clearPasscode()
+    setLanAuthed(false)
+    setLanOnline(false)
+  }, [])
+
+  const openLanGate = useCallback(() => setLanGateOpen(true), [])
+  const closeLanGate = useCallback(() => setLanGateOpen(false), [])
+
+  // Push the current snapshot over whichever transport is active.
+  const doPushNow = useCallback(async () => {
+    const pushedVersions = { ...versionsRef.current }
+    let ok = false
+    try {
+      if (lanInfo?.mode === "electron") {
+        const api = (window as any).electronAPI
+        ok = api?.lanPush ? await api.lanPush(snapRef.current) : false
+      } else if (lanInfo?.mode === "phone") {
+        ok = await lanPushSnapshot(snapRef.current)
+      }
+    } catch {
+      ok = false
+    }
+    if (ok) {
+      lastPushedRef.current = pushedVersions
+      setLastSyncedAt(Date.now())
+    }
+    return ok
+  }, [lanInfo?.mode])
+
+  // Debounced push whenever local data changes (echo-safe).
+  useEffect(() => {
+    if (!lanActive) return
+    if (applyingRemoteRef.current) {
+      applyingRemoteRef.current = false
+      for (const k of appliedKeysRef.current) lastPushedRef.current[k] = versionsRef.current[k]
+      appliedKeysRef.current = new Set()
+    }
+    const pending = Object.keys(versionsRef.current).some(
+      (k) => versionsRef.current[k] !== (lastPushedRef.current[k] ?? 0),
+    )
+    if (!pending) return
+    if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
+    pushTimerRef.current = setTimeout(() => doPushNow(), 700)
+  }, [tasks, habits, goals, events, notes, notifications, userName, lanActive, doPushNow])
+
+  // Phone: poll the laptop every few seconds.
+  const phonePoll = useCallback(async () => {
+    const { snap, authed, reachable } = await lanPull()
+    setLanOnline(reachable)
+    if (!authed) {
+      setLanAuthed(false)
+      prevReachableRef.current = false
+      return
+    }
+    if (snap) {
+      const applied = applyRemote(snap)
+      if (applied) setLastSyncedAt(Date.now())
+    }
+    // Reconnected — upload any edits made while the laptop was offline.
+    if (reachable && !prevReachableRef.current) {
+      doPushNow()
+    }
+    prevReachableRef.current = reachable
+  }, [applyRemote, doPushNow])
+
+  // (Re)wire the transport when the active mode changes.
+  useEffect(() => {
+    if (lanInfo?.mode === "electron") {
+      setLanOnline(true)
+      if (lanInfo.enabled) {
+        const unsub = (window as any).electronAPI?.onLanRemote?.(applyRemote)
+        const t = setTimeout(() => doPushNow(), 600) // teach the server our full state
+        return () => {
+          unsub?.()
+          clearTimeout(t)
+        }
+      }
+      return
+    }
+    if (lanInfo?.mode === "phone") {
+      if (lanAuthed) {
+        // The first poll already performs the catch-up push (prevReachableRef
+        // starts false), so no extra timer is needed here.
+        phonePoll()
+        const interval = setInterval(phonePoll, 2500)
+        return () => clearInterval(interval)
+      }
+      return
+    }
+  }, [lanInfo?.mode, lanInfo?.enabled, lanAuthed, applyRemote, doPushNow, phonePoll])
+
+  // Detect the mode once on mount.
+  useEffect(() => {
+    let cancelled = false
+    detectLan().then((info) => {
+      if (cancelled || !info) return
+      setLanInfo(info)
+      if (info.mode === "electron") {
+        if (getStoredEnabled() && !info.enabled) enableLan()
+      } else if (info.mode === "phone") {
+        lanPull().then(({ authed }) => {
+          if (cancelled) return
+          setLanAuthed(authed)
+          if (!authed) setLanGateOpen(true)
+        })
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   // timer
   const [mode, setMode] = useState<TimerMode>("focus")
   const [totalSeconds, setTotalSeconds] = useState(FOCUS_SECONDS)
@@ -413,6 +708,20 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       sessionCount,
       focusMode,
       toggleFocusMode,
+      lanInfo,
+      lanAuthed,
+      lanOnline,
+      lanBusy,
+      lanError,
+      lastSyncedAt,
+      lanGateOpen,
+      enableLan,
+      disableLan,
+      regenLanPasscode,
+      submitLanPasscode,
+      disconnectPhone,
+      openLanGate,
+      closeLanGate,
       secondsLeft,
       totalSeconds,
       running,
@@ -432,6 +741,8 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       deleteHabit, toggleHabit, goals, addGoal, updateGoal, deleteGoal, events, addEvent, updateEvent, deleteEvent,
       notes, addNote, deleteNote, notifications, markRead, markAllRead,
       focusMode, toggleFocusMode, userName, setUserName, avatarUrl, setAvatarUrl, showTour, dismissTour, sessionCount,
+      lanInfo, lanAuthed, lanOnline, lanBusy, lanError, lastSyncedAt, lanGateOpen,
+      enableLan, disableLan, regenLanPasscode, submitLanPasscode, disconnectPhone, openLanGate, closeLanGate,
       secondsLeft, totalSeconds, running, mode, pomodoro, sessionLabel,
       startTimer, pauseTimer, toggleTimer, skipTimer, stopTimer, resetTimer,
     ],

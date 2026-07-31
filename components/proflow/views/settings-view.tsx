@@ -8,7 +8,14 @@ import {
   ExternalLink,
   CheckCircle2,
   Loader2,
+  Copy,
+  Smartphone,
+  Unlink,
+  Wifi,
+  WifiOff,
 } from "lucide-react"
+import QRCode from "react-qr-code"
+import { cn, timeAgo } from "@/lib/utils"
 import { Card, PageHeader } from "../ui"
 import { useLocalStorage } from "@/lib/use-local-storage"
 import { useStore } from "../store"
@@ -160,6 +167,14 @@ export function SettingsView() {
         </Card>
       </div>
 
+      {/* LAN Sync — phone access */}
+      <Card className="mt-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          LAN Sync — phone access
+        </h2>
+        <LanSyncCard />
+      </Card>
+
       {/* About & Updates */}
       <Card className="mt-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -167,6 +182,172 @@ export function SettingsView() {
         </h2>
         <UpdateCard />
       </Card>
+    </div>
+  )
+}
+
+// ── LAN Sync ───────────────────────────────────────────
+function LanSyncCard() {
+  const {
+    lanInfo,
+    lanAuthed,
+    lanOnline,
+    lanBusy,
+    lanError,
+    lastSyncedAt,
+    enableLan,
+    disableLan,
+    regenLanPasscode,
+    disconnectPhone,
+    openLanGate,
+  } = useStore()
+  const [copied, setCopied] = useState(false)
+
+  const copy = (text: string) => {
+    navigator.clipboard?.writeText(text).then(
+      () => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      },
+      () => {},
+    )
+  }
+
+  // ── Phone view (this page was served by the laptop over Wi-Fi) ──
+  if (lanInfo?.mode === "phone") {
+    return (
+      <div className="mt-4 space-y-3">
+        <div
+          className={cn(
+            "flex items-center gap-3 rounded-lg border p-3",
+            lanOnline ? "border-success/30 bg-success/5" : "border-warning/30 bg-warning/5",
+          )}
+        >
+          {lanOnline ? (
+            <Wifi className="size-5 shrink-0 text-success" />
+          ) : (
+            <WifiOff className="size-5 shrink-0 text-warning" />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground">
+              {lanOnline ? "Connected to your laptop" : "Laptop offline"}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {lanOnline
+                ? `Synced ${timeAgo(lastSyncedAt)} · host: ${lanInfo?.host || lanInfo?.ip || "laptop"}`
+                : "Keep ProFlow open on your laptop and both devices on the same Wi-Fi."}
+            </p>
+          </div>
+        </div>
+
+        {lanAuthed ? (
+          <button
+            type="button"
+            onClick={disconnectPhone}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-danger/40 hover:bg-danger/10 hover:text-danger"
+          >
+            <Unlink className="size-3.5" />
+            Disconnect from laptop
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={openLanGate}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <Smartphone className="size-3.5" />
+            Enter passcode to sync
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  // ── Laptop view (desktop app — hosts the server) ──
+  const enabled = !!lanInfo?.enabled
+  return (
+    <div className="mt-4 space-y-3">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-foreground">Allow your phone to use this app</p>
+          <p className="text-sm text-muted-foreground">
+            No account or internet — both devices just need the same Wi-Fi.
+          </p>
+        </div>
+        <Switch on={enabled} onToggle={() => (enabled ? disableLan() : enableLan())} />
+      </div>
+
+      {enabled ? (
+        <>
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+            <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+              Open this on your phone
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-4">
+              {/* QR code — dark-on-light so every phone camera scans it easily */}
+              {lanInfo?.url && (
+                <div className="shrink-0 rounded-xl bg-white p-2 shadow-sm">
+                  <QRCode value={lanInfo.url} size={132} bgColor="#ffffff" fgColor="#120d1f" title={`ProFlow — ${lanInfo.url}`} />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm text-foreground">
+                    {lanInfo?.url || "starting…"}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => lanInfo?.url && copy(lanInfo.url)}
+                    className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    {copied ? <CheckCircle2 className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Scan it with your phone&apos;s camera (or type the address). If Windows Firewall asks, click{" "}
+                  <span className="font-medium text-foreground">Allow</span>. On networks with several ProFlow
+                  laptops, each shows its own QR — scan the one on this screen.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-secondary/20 p-3">
+            <div>
+              <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Sync passcode</p>
+              <p className="mt-1 font-mono text-2xl font-bold tracking-[0.4em] text-foreground">
+                {lanInfo?.passcode || "······"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Your phone asks for this the first time it connects.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={regenLanPasscode}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <RefreshCw className="size-3.5" />
+              New code
+            </button>
+          </div>
+
+          {lanError && (
+            <p className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+              Couldn&apos;t start the server: {lanError}. Check that port 5174 is free and allow ProFlow through Windows Firewall.
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Server active{lanBusy ? " — starting…" : ""}. Tasks, habits, goals, events, notes and your name sync both ways.
+          </p>
+        </>
+      ) : (
+        <p className="rounded-lg border border-border bg-secondary/20 p-3 text-sm text-muted-foreground">
+          Turn this on to browse and edit ProFlow from your phone. Changes sync automatically in both directions —
+          even with no internet.
+        </p>
+      )}
     </div>
   )
 }

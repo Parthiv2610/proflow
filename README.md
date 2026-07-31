@@ -27,7 +27,57 @@ Track tasks, habits, goals, calendar events, and deep work sessions — all in o
 | 🧘 **Focus Mode** | Distraction-free mode hiding sidebar and topbar |
 | 🎉 **Welcome Tour** | 8-step onboarding overlay on first visit |
 | 💡 **Tooltip Hints** | Gentle sidebar tooltips for the first few sessions |
+| 📶 **LAN Sync** | Use the app on your phone over Wi-Fi — no account or internet needed |
+| 📱 **Scan-to-Connect QR** | Each laptop shows a QR code so your phone opens the right address instantly |
 | 💾 **Local Persistence** | All data saves to localStorage — survives reloads |
+
+---
+
+## 🚀 How to Use
+
+There are two ways to use ProFlow — pick whichever fits you.
+
+### 1️⃣ Desktop only (no phone)
+
+Just install and use the app on your computer. Everything is saved locally on
+your machine and works fully offline.
+
+1. Download and run `ProFlow-Setup-2.0.0.exe` from the latest release
+2. Click through the installer — it installs to `C:\Program Files\ProFlow`
+3. Open ProFlow and start adding tasks, habits, goals, events, and notes
+
+That's it — no account, no setup, no internet required.
+
+### 2️⃣ Laptop + Phone (LAN Sync)
+
+Use the same app on your phone, with changes syncing **both ways** — no account,
+no internet, just both devices on the **same Wi-Fi**.
+
+**On your laptop (once):**
+
+1. Open ProFlow → **Settings → LAN Sync**
+2. Turn on **"Allow your phone to use this app"**
+3. If Windows Firewall asks, click **Allow**
+4. The card shows a **QR code** and an address like `http://192.168.x.x:5174`
+
+**On your phone:**
+
+1. Connect the phone to the **same Wi-Fi** as the laptop
+2. Scan the QR code with your phone's camera — or type the address in the browser
+3. Enter the 6-digit passcode shown on the laptop (only the first time)
+4. Done — the phone shows the same tasks, habits, goals, events, and notes
+
+**To make it feel like a real app on your phone:**
+
+- **iPhone:** Safari → Share → **Add to Home Screen**
+- **Android:** Chrome → ⋮ menu → **Add to Home screen**
+
+> 💡 **How syncing works:** the laptop is the "brain" — your phone is a remote
+> screen that talks to it over Wi-Fi. Keep ProFlow open on the laptop with LAN
+> Sync on. If the phone loses the connection, it keeps its own copy of your data
+> and re-syncs automatically when you reconnect. Multiple people can each use
+> their own laptop + phone pair on the same network — every laptop shows its own
+> QR code and passcode, and data never mixes between them.
 
 ---
 
@@ -48,7 +98,7 @@ Track tasks, habits, goals, calendar events, and deep work sessions — all in o
 
 ```bash
 # Clone the repo
-git clone https://github.com/parth-kulkarni1/pro-flow.git
+git clone https://github.com/Parthiv2610/proflow.git
 cd pro-flow
 
 # Install dependencies
@@ -133,9 +183,11 @@ pro-flow/
 │   └── ui/                   # shadcn-style UI primitives
 ├── electron/
 │   ├── main.js               # Electron main process
-│   └── preload.js            # Preload script (IPC bridge)
+│   ├── preload.js            # Preload script (IPC bridge)
+│   └── lan-server.js         # LAN sync server (Wi-Fi phone access)
 ├── lib/                      # Utility functions
-│   └── use-local-storage.ts  # localStorage persistence hook
+│   ├── use-local-storage.ts  # localStorage persistence hook
+│   └── lan-sync.ts           # Renderer-side LAN sync (phone polling, detection)
 ├── public/                   # Static assets
 ├── build/                    # Build scripts & installer config
 │   ├── installer.nsi         # NSIS installer script

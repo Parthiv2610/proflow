@@ -13,7 +13,7 @@ import {
   TrendingUp,
   TriangleAlert,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, timeAgo } from "@/lib/utils"
 import { DragSortContainer, DragSortItem } from "../drag-sort"
 import { FocusChart } from "../focus-chart"
 import { SessionBar } from "../session-bar"
@@ -73,7 +73,15 @@ export function Dashboard() {
       hour12: true,
     })
   }
-  const { tasks, habits, goals, events, notes, setView, cycleTaskStatus, deleteTask, reorderTasks, toggleHabit, userName } = useStore()
+  const { tasks, habits, goals, events, notes, setView, cycleTaskStatus, deleteTask, reorderTasks, toggleHabit, userName, lanInfo, lanAuthed, lanOnline, lastSyncedAt } = useStore()
+
+  const syncIndicator = useMemo(() => {
+    const active =
+      (lanInfo?.mode === "electron" && lanInfo.enabled) || (lanInfo?.mode === "phone" && lanAuthed)
+    if (!active) return { text: "Local only", dot: "bg-muted" }
+    if (lanInfo?.mode === "phone" && !lanOnline) return { text: "Laptop offline", dot: "bg-warning" }
+    return { text: `Synced ${timeAgo(lastSyncedAt)}`, dot: "bg-success" }
+  }, [lanInfo, lanAuthed, lanOnline, lastSyncedAt])
 
   const done = tasks.filter((t) => t.status === "done").length
   const total = tasks.length
@@ -103,10 +111,15 @@ export function Dashboard() {
             <span className="text-danger">{overdue.length} overdue</span>
           </p>
         </div>
-        <span className="flex items-center gap-2 text-sm text-muted-foreground">
-          Last synced 2 min ago
-          <span className="size-2 rounded-full bg-success" />
-        </span>
+        <button
+          type="button"
+          onClick={() => setView("settings")}
+          className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          title="Sync settings"
+        >
+          {syncIndicator.text}
+          <span className={cn("size-2 rounded-full", syncIndicator.dot)} />
+        </button>
       </div>
 
       <SessionBar />
