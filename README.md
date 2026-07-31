@@ -83,7 +83,6 @@ no internet, just both devices on the **same Wi-Fi**.
 
 ## 📸 Screenshots
 
-*(Add screenshots here)*
 
 ---
 
