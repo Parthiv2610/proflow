@@ -17,10 +17,7 @@ import {
 import QRCode from "react-qr-code"
 import { cn, timeAgo } from "@/lib/utils"
 import { Card, PageHeader } from "../ui"
-import { useLocalStorage } from "@/lib/use-local-storage"
-import { useStore } from "../store"
-
-type Toggle = { id: string; label: string; desc: string; on: boolean }
+import { useStore, ACCENTS } from "../store"
 
 function Switch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
@@ -42,18 +39,8 @@ function Switch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   )
 }
 
-const defaultPrefs: Toggle[] = [
-  { id: "p1", label: "Desktop notifications", desc: "Get notified about due tasks and events.", on: true },
-  { id: "p2", label: "Focus session reminders", desc: "Nudge me when it's time for deep work.", on: true },
-  { id: "p3", label: "Habit streak alerts", desc: "Remind me about incomplete habits at 8 PM.", on: false },
-  { id: "p4", label: "Weekly review email", desc: "Send a summary of my week every Sunday.", on: true },
-  { id: "p5", label: "Auto-start breaks", desc: "Begin break timer automatically after focus.", on: false },
-]
-
 export function SettingsView() {
-  const { userName, setUserName, avatarUrl, setAvatarUrl } = useStore()
-  const [prefs, setPrefs] = useLocalStorage<Toggle[]>("settings-prefs", defaultPrefs)
-  const [theme, setTheme] = useLocalStorage<string>("settings-theme", "Purple")
+  const { userName, setUserName, avatarUrl, setAvatarUrl, theme, setTheme, prefs, togglePref } = useStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,9 +54,6 @@ export function SettingsView() {
     reader.readAsDataURL(file)
     e.target.value = ""
   }
-
-  const toggle = (id: string) =>
-    setPrefs((prev) => prev.map((p) => (p.id === id ? { ...p, on: !p.on } : p)))
 
   const themes = ["Purple", "Blue", "Green", "Amber"]
 
@@ -126,25 +110,31 @@ export function SettingsView() {
                 placeholder="Your name"
                 className="w-full rounded-lg border border-border bg-secondary/40 px-3 py-1.5 text-sm font-medium text-foreground outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
               />
-              <p className="mt-1 text-sm text-muted-foreground">Personal plan</p>
+              <p className="mt-1 text-sm text-muted-foreground">Your name shows on the dashboard greeting.</p>
             </div>
           </div>
         </Card>
 
         <Card>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Accent color</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Changes the app theme instantly — buttons, sidebar and charts recolor live.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             {themes.map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => setTheme(t)}
-                className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+                aria-pressed={theme === t}
+                className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
                   theme === t
                     ? "border-primary bg-primary/10 text-foreground"
                     : "border-border text-muted-foreground hover:bg-accent hover:text-foreground"
                 }`}
               >
+                <span
+                  className="size-3 rounded-full border border-white/20"
+                  style={{ backgroundColor: ACCENTS[t]?.primary ?? "var(--primary)" }}
+                />
                 {t}
               </button>
             ))}
@@ -153,6 +143,7 @@ export function SettingsView() {
 
         <Card>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Preferences</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Each setting here actually does something — notifications, sound and timer flow.</p>
           <div className="mt-2 divide-y divide-border">
             {prefs.map((p) => (
               <div key={p.id} className="flex items-center justify-between gap-4 py-3.5">
@@ -160,7 +151,7 @@ export function SettingsView() {
                   <p className="text-sm font-medium text-foreground">{p.label}</p>
                   <p className="text-sm text-muted-foreground text-pretty">{p.desc}</p>
                 </div>
-                <Switch on={p.on} onToggle={() => toggle(p.id)} />
+                <Switch on={p.on} onToggle={() => togglePref(p.id)} />
               </div>
             ))}
           </div>

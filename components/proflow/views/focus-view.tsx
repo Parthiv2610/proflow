@@ -1,6 +1,6 @@
 "use client"
 
-import { Coffee, Pause, Play, RotateCcw, SkipForward, Square, Timer } from "lucide-react"
+import { Coffee, Minus, Pause, Play, Plus, RotateCcw, SkipForward, Square, Timer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatTime, useStore } from "../store"
@@ -15,6 +15,10 @@ export function FocusView() {
     pomodoro,
     totalPomodoros,
     sessionLabel,
+    focusMinutes,
+    breakMinutes,
+    setFocusMinutes,
+    setBreakMinutes,
     toggleTimer,
     skipTimer,
     stopTimer,
@@ -112,12 +116,78 @@ export function FocusView() {
           </Card>
 
           <Card className="flex flex-col gap-3">
+            <h2 className="font-semibold">Timer settings</h2>
+            <Stepper
+              label="Focus length"
+              value={focusMinutes}
+              min={5}
+              max={120}
+              step={5}
+              onChange={setFocusMinutes}
+            />
+            <Stepper
+              label="Break length"
+              value={breakMinutes}
+              min={1}
+              max={30}
+              step={1}
+              onChange={setBreakMinutes}
+            />
+            <p className="text-xs text-muted-foreground">
+              Saved automatically — changes apply whenever the timer is idle.
+            </p>
+          </Card>
+
+          <Card className="flex flex-col gap-3">
             <h2 className="font-semibold">Today</h2>
             <Stat label="Deep work" value="18.4 hrs" tone="text-info" />
             <Stat label="Sessions completed" value="7" tone="text-primary" />
             <Stat label="Focus streak" value="12 days" tone="text-focus" />
           </Card>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function Stepper({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  step: number
+  onChange: (n: number) => void
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-xl bg-secondary/40 px-3 py-2.5">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(min, value - step))}
+          aria-label={`Decrease ${label}`}
+          className="flex size-7 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <Minus className="size-3.5" />
+        </button>
+        <span className="w-14 text-center text-sm font-semibold tabular-nums">
+          {value} min
+        </span>
+        <button
+          type="button"
+          onClick={() => onChange(Math.min(max, value + step))}
+          aria-label={`Increase ${label}`}
+          className="flex size-7 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <Plus className="size-3.5" />
+        </button>
       </div>
     </div>
   )

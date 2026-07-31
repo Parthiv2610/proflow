@@ -16,7 +16,6 @@ import {
 import { cn, timeAgo } from "@/lib/utils"
 import { DragSortContainer, DragSortItem } from "../drag-sort"
 import { FocusChart } from "../focus-chart"
-import { SessionBar } from "../session-bar"
 import { TaskRow } from "../task-row"
 import { useStore, type EventItem, type View } from "../store"
 import { Card, CircularProgress, ProgressBar } from "../ui"
@@ -121,8 +120,6 @@ export function Dashboard() {
           <span className={cn("size-2 rounded-full", syncIndicator.dot)} />
         </button>
       </div>
-
-      <SessionBar />
 
       <div className="flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-card p-1">
         {tabs.map((t) => {

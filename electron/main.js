@@ -8,6 +8,9 @@ const { startLanServer, getLanIPs, generatePasscode } = require("./lan-server")
 
 const isDev = !app.isPackaged
 
+// Allow the timer-end chime to play without requiring a user gesture.
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required")
+
 // ---------------------------------------------------------------------------
 // Auto-update helpers
 // --------------------------------------------------------------------------

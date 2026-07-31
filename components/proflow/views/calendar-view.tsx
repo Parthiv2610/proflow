@@ -593,6 +593,11 @@ export function CalendarView() {
         <QuickEventForm
           onSubmit={editSubmit}
           onCancel={() => setEditing(null)}
+          onDelete={() => {
+            if (!editing) return
+            deleteEvent(editing)
+            setEditing(null)
+          }}
           placeholder={
             editing
               ? events.find((e) => e.id === editing)?.title ?? "Event title"
@@ -644,6 +649,10 @@ function EventBlock({
     startMin: 0,
     startDate: "",
   })
+  // Click vs. drag: a click (no real movement) opens the editor, a drag moves
+  // the event. The suppress flag eats the click event that follows a drag/resize.
+  const dragMovedRef = useRef(false)
+  const suppressClickRef = useRef(false)
 
   const handleResizeMove = useCallback(
     (ev: MouseEvent) => {
@@ -663,6 +672,7 @@ function EventBlock({
   const handleResizeUp = useCallback(() => {
     resizeRef.current.active = false
     setResizing(false)
+    suppressClickRef.current = true
   }, [])
 
   const handleDragMove = useCallback(
@@ -671,6 +681,7 @@ function EventBlock({
       if (!d.active) return
       const dy = ev.clientY - d.startMouseY
       const dx = ev.clientX - d.startMouseX
+      if (Math.abs(dx) + Math.abs(dy) > 3) dragMovedRef.current = true
       setDragOffset({ x: dx, y: dy })
     },
     [],
@@ -683,6 +694,10 @@ function EventBlock({
       d.active = false
       setDragging(false)
       setDragOffset({ x: 0, y: 0 })
+
+      // A plain click (no movement) opens the editor — no move happens.
+      if (!dragMovedRef.current) return
+      suppressClickRef.current = true
 
       // Compute new time slot from mouse position
       const dy = ev.clientY - d.startMouseY
@@ -735,6 +750,11 @@ function EventBlock({
       // Ignore resize handle clicks
       if ((e.target as HTMLElement).closest(".resize-handle")) return
       e.preventDefault()
+      // Every click is preceded by a mousedown on the block, so clearing both
+      // refs here guarantees no stale flags eat the next single-click edit
+      // (a drag/resize that ends outside the block never fires its click here).
+      dragMovedRef.current = false
+      suppressClickRef.current = false
       dragRef.current = {
         active: true,
         startMouseY: e.clientY,
@@ -771,7 +791,7 @@ function EventBlock({
   return (
     <div
       className={cn(
-        "absolute left-1 right-1 z-10 overflow-hidden rounded-md border-l-[3px] px-2 py-1 text-left text-xs shadow-sm transition-shadow hover:shadow-md",
+        "group absolute left-1 right-1 z-10 cursor-pointer overflow-hidden rounded-md border-l-[3px] px-2 py-1 text-left text-xs shadow-sm transition-shadow hover:shadow-md",
         style,
         resizing && "shadow-lg ring-2 ring-primary/40",
         dragging && "z-50 ring-2 ring-primary/50 shadow-xl opacity-90",
@@ -784,7 +804,13 @@ function EventBlock({
         transition: dragging ? "none" : undefined,
       }}
       onMouseDown={onBodyMouseDown}
-      onDoubleClick={onEdit}
+      onClick={() => {
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false
+          return
+        }
+        onEdit()
+      }}
     >
       <p className="truncate text-[11px] font-semibold leading-tight">
         {event.title}
@@ -794,14 +820,16 @@ function EventBlock({
         {formatTimeFromEvent(event)}
       </p>
 
-      {/* Delete button */}
+      {/* Delete button — appears when hovering the event */}
       <button
         type="button"
+        title="Delete event"
+        aria-label={`Delete event: ${event.title}`}
         onClick={(e) => {
           e.stopPropagation()
           onDelete()
         }}
-        className="absolute right-1 top-1 flex size-4 items-center justify-center rounded text-current opacity-0 transition-opacity hover:opacity-100"
+        className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-md bg-black/40 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-danger"
       >
         <Trash2 className="size-3" />
       </button>
@@ -828,12 +856,14 @@ const colorSwatches = [
 function QuickEventForm({
   onSubmit,
   onCancel,
+  onDelete,
   placeholder,
   initialValue,
   initialColor,
 }: {
   onSubmit: (title: string, color: string) => void
   onCancel: () => void
+  onDelete?: () => void
   placeholder: string
   initialValue?: string
   initialColor?: string
@@ -880,13 +910,28 @@ function QuickEventForm({
         </div>
       </div>
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit" size="lg" disabled={!title.trim()}>
-          Save
-        </Button>
+      <div className="flex items-center justify-between gap-2">
+        {onDelete ? (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onDelete}
+            className="gap-1.5 text-danger hover:bg-danger/10 hover:text-danger"
+          >
+            <Trash2 className="size-3.5" />
+            Delete
+          </Button>
+        ) : (
+          <span />
+        )}
+        <div className="flex gap-2">
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" size="lg" disabled={!title.trim()}>
+            Save
+          </Button>
+        </div>
       </div>
     </form>
   )

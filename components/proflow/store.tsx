@@ -10,6 +10,8 @@ import {
   useState,
 } from "react"
 import { useLocalStorage } from "@/lib/use-local-storage"
+import { showNotification } from "@/lib/notify"
+import { playChime } from "@/lib/sound"
 import {
   clearPasscode,
   detectLan,
@@ -95,6 +97,40 @@ export type AppNotification = {
 
 type TimerMode = "focus" | "break"
 
+export type Pref = { id: string; label: string; desc: string; on: boolean }
+
+// Sensible, real preference defaults (each one is wired to actual behavior).
+export const defaultPrefs: Pref[] = [
+  { id: "desktopNotif", label: "Desktop notifications", desc: "Show an OS notification when tasks are overdue or you have events today.", on: true },
+  { id: "focusReminders", label: "Focus session reminders", desc: "Nudge me when a focus session ends.", on: true },
+  { id: "soundEnd", label: "Sound when timer ends", desc: "Play a chime when the timer finishes a session.", on: true },
+  { id: "autoBreaks", label: "Auto-start breaks", desc: "Begin the break timer automatically after focus.", on: false },
+]
+
+// Accent themes — applied as CSS variables on <html> so every view re-colors live.
+export const ACCENTS: Record<string, { primary: string; fg: string; accent: string }> = {
+  Purple: {
+    primary: "oklch(0.62 0.2 292)",
+    fg: "oklch(0.99 0 0)",
+    accent: "oklch(0.3 0.03 292)",
+  },
+  Blue: {
+    primary: "oklch(0.6 0.18 255)",
+    fg: "oklch(0.99 0 0)",
+    accent: "oklch(0.3 0.04 255)",
+  },
+  Green: {
+    primary: "oklch(0.68 0.16 155)",
+    fg: "oklch(0.2 0.02 155)",
+    accent: "oklch(0.3 0.05 155)",
+  },
+  Amber: {
+    primary: "oklch(0.76 0.15 70)",
+    fg: "oklch(0.2 0.02 70)",
+    accent: "oklch(0.35 0.06 70)",
+  },
+}
+
 type Store = {
   view: View
   setView: (v: View) => void
@@ -136,6 +172,11 @@ type Store = {
   avatarUrl: string
   setAvatarUrl: (url: string) => void
 
+  theme: string
+  setTheme: (t: string) => void
+  prefs: Pref[]
+  togglePref: (id: string) => void
+
   showTour: boolean
   dismissTour: () => void
   sessionCount: number
@@ -168,6 +209,10 @@ type Store = {
   pomodoro: number
   totalPomodoros: number
   sessionLabel: string
+  focusMinutes: number
+  breakMinutes: number
+  setFocusMinutes: (n: number) => void
+  setBreakMinutes: (n: number) => void
   startTimer: () => void
   pauseTimer: () => void
   toggleTimer: () => void
@@ -178,8 +223,8 @@ type Store = {
 
 const StoreContext = createContext<Store | null>(null)
 
-const FOCUS_SECONDS = 25 * 60
-const BREAK_SECONDS = 5 * 60
+const DEFAULT_FOCUS_MINUTES = 25
+const DEFAULT_BREAK_MINUTES = 5
 
 const initialTasks: Task[] = []
 
@@ -232,6 +277,46 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const setNotifications = wrapSetter<AppNotification[]>("notifications", setRawNotifications)
   const setUserName = wrapSetter<string>("userName", setRawUserName)
   const [avatarUrl, setAvatarUrl] = useLocalStorage("avatarUrl", "")
+
+  // theme + preferences (persisted, applied live)
+  const [theme, setTheme] = useLocalStorage("settings-theme", "Purple")
+  const [prefs, setPrefs] = useLocalStorage<Pref[]>("settings-prefs-v2", defaultPrefs)
+  const togglePref = useCallback((id: string) => {
+    setPrefs((prev) => prev.map((p) => (p.id === id ? { ...p, on: !p.on } : p)))
+  }, [])
+
+  // Apply the accent theme as CSS variables on <html>
+  useEffect(() => {
+    const a = ACCENTS[theme] ?? ACCENTS.Purple
+    const root = document.documentElement
+    root.style.setProperty("--primary", a.primary)
+    root.style.setProperty("--primary-foreground", a.fg)
+    root.style.setProperty("--ring", a.primary)
+    root.style.setProperty("--accent", a.accent)
+    root.style.setProperty("--chart-1", a.primary)
+    root.style.setProperty("--sidebar-primary", a.primary)
+    root.style.setProperty("--sidebar-primary-foreground", a.fg)
+    root.style.setProperty("--sidebar-ring", a.primary)
+    root.style.setProperty("--sidebar-accent", a.accent)
+  }, [theme])
+
+  // Desktop notifications — once per day, summarize overdue tasks + today's events.
+  const notifiedDayRef = useRef("")
+  useEffect(() => {
+    if (!prefs.some((p) => p.id === "desktopNotif" && p.on)) return
+    const d = new Date()
+    const dayKey = d.toDateString()
+    if (notifiedDayRef.current === dayKey) return
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    const overdue = tasks.filter((t) => t.overdue && t.status !== "done").length
+    const eventsToday = events.filter((e) => e.date === today).length
+    if (overdue === 0 && eventsToday === 0) return
+    notifiedDayRef.current = dayKey
+    const bits: string[] = []
+    if (overdue > 0) bits.push(`${overdue} overdue task${overdue > 1 ? "s" : ""}`)
+    if (eventsToday > 0) bits.push(`${eventsToday} event${eventsToday > 1 ? "s" : ""} today`)
+    showNotification("ProFlow", bits.join(" · "))
+  }, [prefs, tasks, events])
 
   // welcome tour
   const [showTour, setShowTour] = useLocalStorage("showTour", true)
@@ -491,9 +576,11 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   // timer
+  const [focusMinutes, setFocusMinutes] = useLocalStorage("focusMinutes", DEFAULT_FOCUS_MINUTES)
+  const [breakMinutes, setBreakMinutes] = useLocalStorage("breakMinutes", DEFAULT_BREAK_MINUTES)
   const [mode, setMode] = useState<TimerMode>("focus")
-  const [totalSeconds, setTotalSeconds] = useState(FOCUS_SECONDS)
-  const [secondsLeft, setSecondsLeft] = useState(14 * 60 + 4)
+  const [totalSeconds, setTotalSeconds] = useState(DEFAULT_FOCUS_MINUTES * 60)
+  const [secondsLeft, setSecondsLeft] = useState(DEFAULT_FOCUS_MINUTES * 60)
   const [running, setRunning] = useState(false)
   const [pomodoro, setPomodoro] = useState(3)
   const totalPomodoros = 4
@@ -511,22 +598,47 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     }
   }, [running])
 
-  useEffect(() => {
-    if (secondsLeft === 0 && running) {
-      setRunning(false)
-    }
-  }, [secondsLeft, running])
-
   const startTimer = useCallback(() => setRunning(true), [])
   const pauseTimer = useCallback(() => setRunning(false), [])
   const toggleTimer = useCallback(() => setRunning((r) => !r), [])
 
   const applyMode = useCallback((m: TimerMode) => {
     setMode(m)
-    const total = m === "focus" ? FOCUS_SECONDS : BREAK_SECONDS
+    const total = (m === "focus" ? focusMinutes : breakMinutes) * 60
     setTotalSeconds(total)
     setSecondsLeft(total)
-  }, [])
+  }, [focusMinutes, breakMinutes])
+
+  // Session end: chime / notify / auto-advance according to preferences.
+  useEffect(() => {
+    if (secondsLeft !== 0 || !running) return
+    const prefOn = (id: string) => prefs.some((p) => p.id === id && p.on)
+    if (prefOn("soundEnd")) playChime()
+    if (prefOn("focusReminders")) {
+      showNotification(
+        mode === "focus" ? "Focus session complete" : "Break over",
+        mode === "focus" ? "Great work — time for a break!" : "Ready for another deep-work session?",
+      )
+    }
+    if (prefOn("autoBreaks")) {
+      // Auto-advance to the next phase and keep running
+      if (mode === "focus") setPomodoro((p) => (p >= totalPomodoros ? 1 : p + 1))
+      applyMode(mode === "focus" ? "break" : "focus")
+      setRunning(true)
+    } else {
+      setRunning(false)
+    }
+  }, [secondsLeft, running, mode, prefs, applyMode, totalPomodoros])
+
+  // When the timer is idle, reflect the configured durations immediately.
+  useEffect(() => {
+    if (running) return
+    const desired = (mode === "focus" ? focusMinutes : breakMinutes) * 60
+    if (totalSeconds !== desired) {
+      setTotalSeconds(desired)
+      setSecondsLeft(desired)
+    }
+  }, [focusMinutes, breakMinutes, mode, running, totalSeconds])
 
   const skipTimer = useCallback(() => {
     setRunning(false)
@@ -703,6 +815,10 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       setUserName,
       avatarUrl,
       setAvatarUrl,
+      theme,
+      setTheme,
+      prefs,
+      togglePref,
       showTour,
       dismissTour,
       sessionCount,
@@ -729,6 +845,10 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       pomodoro,
       totalPomodoros,
       sessionLabel,
+      focusMinutes,
+      breakMinutes,
+      setFocusMinutes,
+      setBreakMinutes,
       startTimer,
       pauseTimer,
       toggleTimer,
@@ -740,10 +860,12 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       view, search, tasks, addTask, deleteTask, reorderTasks, cycleTaskStatus, setTaskStatus, habits, addHabit,
       deleteHabit, toggleHabit, goals, addGoal, updateGoal, deleteGoal, events, addEvent, updateEvent, deleteEvent,
       notes, addNote, deleteNote, notifications, markRead, markAllRead,
-      focusMode, toggleFocusMode, userName, setUserName, avatarUrl, setAvatarUrl, showTour, dismissTour, sessionCount,
+      focusMode, toggleFocusMode, userName, setUserName, avatarUrl, setAvatarUrl,
+      theme, setTheme, prefs, togglePref, showTour, dismissTour, sessionCount,
       lanInfo, lanAuthed, lanOnline, lanBusy, lanError, lastSyncedAt, lanGateOpen,
       enableLan, disableLan, regenLanPasscode, submitLanPasscode, disconnectPhone, openLanGate, closeLanGate,
       secondsLeft, totalSeconds, running, mode, pomodoro, sessionLabel,
+      focusMinutes, breakMinutes, setFocusMinutes, setBreakMinutes,
       startTimer, pauseTimer, toggleTimer, skipTimer, stopTimer, resetTimer,
     ],
   )
