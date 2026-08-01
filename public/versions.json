@@ -1,7 +1,8 @@
 {
   "latestVersion": "2.1.1",
-  "downloadUrl": "https://github.com/Parthiv2610/proflow/releases/latest/download/ProFlow-Setup-2.1.1.exe",
-  "releaseNotes": "✨ v2.1.1 — No more fake demo data: deep-work hours, the 7-day focus chart, and focus streaks now track your REAL completed focus sessions. Plus LAN-sync connection fixes (smart IP detection + firewall self-test).",
+  "downloadUrl": "https://github.com/Parthiv2610/proflow/releases/latest/download/ProFlow-Setup.exe",
+  "apkDownloadUrl": "https://github.com/Parthiv2610/proflow/releases/latest/download/app-release.apk",
+  "releaseNotes": "✨ ProFlow — install once, update forever. Every push to GitHub auto-builds a new release; the app updates IN PLACE (no uninstall, data kept).",
   "minimumVersion": "1.0.0",
-  "updateUrl": "https://pro-flow-8mp2.vercel.app/versions.json"
+  "updateUrl": "https://api.github.com/repos/Parthiv2610/proflow/releases/latest"
 }

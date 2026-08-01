@@ -1,0 +1,319 @@
+name: Auto Build & Publish
+
+# Every push to master/main produces a NEW release with a HIGHER version, so
+# installed apps detect it and update IN PLACE (electron-updater on desktop,
+# system installer on Android). No tags, no manual steps — just push code.
+on:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+concurrency:
+  group: auto-release
+  # Never cancel a run mid-publish — a rapid second push could otherwise kill
+  # the first build after it uploaded the installer but before the APK landed,
+  # leaving a release with only one of the two assets. Queue instead.
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  compute-version:
+    name: Compute build version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      versionCode: ${{ steps.v.outputs.versionCode }}
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Version = <major>.<minor>.<commit-count> for branch pushes (always
+      # increases → auto-update triggers), or the tag for tag pushes.
+      # APK versionCode must strictly increase too (Android refuses installs
+      # with a lower versionCode than the installed one).
+      - name: Compute version from history
+        id: v
+        shell: bash
+        run: |
+          COUNT=$(git rev-list --count HEAD)
+          if [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            BASE=$(node -p "require('./package.json').version.split('.').slice(0,2).join('.')")
+            VERSION="${BASE}.${COUNT}"
+          fi
+          VERSION_CODE=$((50000 + COUNT))
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "versionCode=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+          echo "Release version: ${VERSION} (APK versionCode ${VERSION_CODE})"
+
+  build-installer:
+    name: Build ProFlow-Setup (Windows)
+    needs: compute-version
+    runs-on: windows-latest
+    steps:
+      - name: Checkout fresh source
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Apply build version
+        shell: bash
+        run: |
+          node -e "const fs=require('fs');const p=require('./package.json');p.version='${{ needs.compute-version.outputs.version }}';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+          echo "package.json version set to ${{ needs.compute-version.outputs.version }}"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Same config swap build.bat does locally: dev config is committed, export
+      # config is written for the build so the static export lands in out/.
+      - name: Build static export (fresh, never stale)
+        shell: bash
+        run: |
+          cp next.config.mjs next.config.mjs.dev
+          cat > next.config.mjs <<'EOF'
+          /** @type {import('next').NextConfig} */
+          const nextConfig = {
+            output: "export",
+            distDir: "out",
+            typescript: { ignoreBuildErrors: true },
+            images: { unoptimized: true },
+            assetPrefix: "./",
+            trailingSlash: true,
+          }
+          export default nextConfig
+          EOF
+          pnpm exec next build
+          cp next.config.mjs.dev next.config.mjs
+          rm -f next.config.mjs.dev
+
+      # Guards against the stale-build blank-screen bug: a corrupt export is the
+      # 404 shell and React never hydrates. Fail the build instead of shipping it.
+      - name: Hydration guard (fail if export is a dead shell)
+        shell: bash
+        run: |
+          if [ ! -f out/index.html ]; then
+            echo "::error::out/index.html missing - build produced nothing"
+            exit 1
+          fi
+          # The not-found boundary flight data is a NORMAL part of every Next
+          # export - do NOT grep for it. The real signals of a healthy export:
+          # RSC flight data present + the app shell marker + JS chunks on disk.
+          if ! grep -q "self.__next_f" out/index.html; then
+            echo "::error::No RSC flight data in out/index.html - React will never hydrate"
+            exit 1
+          fi
+          if ! grep -q "ProFlow" out/index.html; then
+            echo "::error::App shell marker missing from out/index.html"
+            exit 1
+          fi
+          CHUNKS=$(ls out/_next/static/chunks/*.js 2>/dev/null | wc -l)
+          if [ "${CHUNKS}" -lt 1 ]; then
+            echo "::error::No JS chunks under out/_next/static/chunks"
+            exit 1
+          fi
+          echo "OK: index.html is hydrated-ready with ${CHUNKS} JS chunks"
+
+      # --publish always uploads ProFlow-Setup-*.exe + latest.yml + *.blockmap to
+      # the GitHub Release tagged v<version>. latest.yml + blockmap are what
+      # electron-updater needs for silent in-place (differential) updates.
+      - name: Package + publish installer (electron-builder NSIS)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec electron-builder --win --publish always
+
+      - name: Verify installer artifact + update feed
+        shell: bash
+        run: |
+          ls -la release/
+          INSTALLER=$(ls release/ProFlow-Setup-*.exe 2>/dev/null | head -1)
+          if [ -z "${INSTALLER}" ]; then
+            echo "::error::No ProFlow-Setup-*.exe produced by electron-builder"
+            exit 1
+          fi
+          SIZE=$(stat -c%s "${INSTALLER}" 2>/dev/null || echo 0)
+          echo "Installer: ${INSTALLER} (${SIZE} bytes)"
+          if [ "${SIZE}" -lt 50000000 ]; then
+            echo "::error::Installer suspiciously small (${SIZE} bytes) - packaging likely failed"
+            exit 1
+          fi
+          if [ ! -f release/latest.yml ]; then
+            echo "::error::latest.yml missing - electron-updater auto-update feed will not work"
+            exit 1
+          fi
+          echo "OK: installer + latest.yml update feed present"
+
+      # A STABLE-named copy of the installer so the permanent URL
+      # https://github.com/Parthiv2610/proflow/releases/latest/download/ProFlow-Setup.exe
+      # always points at the newest build — the versioned filename changes every
+      # release and would break links. This is the "install once" download;
+      # from then on the app updates itself in place.
+      - name: Upload stable-named installer (permanent URL)
+        shell: bash
+        run: |
+          INSTALLER=$(ls release/ProFlow-Setup-*.exe 2>/dev/null | head -1)
+          if [ -z "${INSTALLER}" ]; then
+            echo "::error::No installer found to copy as ProFlow-Setup.exe"
+            exit 1
+          fi
+          cp "${INSTALLER}" release/ProFlow-Setup.exe
+          ls -la release/ProFlow-Setup.exe
+
+      - name: Attach stable installer to the same release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.compute-version.outputs.version }}
+          files: release/ProFlow-Setup.exe
+          fail_on_unmatched_files: true
+
+  build-apk:
+    name: Build ProFlow APK (Android)
+    needs: [compute-version, build-installer]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fresh source
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Same version the installer used — the APK must carry a HIGHER versionCode
+      # than whatever is already installed so Android updates in place.
+      - name: Apply build version
+        shell: bash
+        run: |
+          sed -i "s/versionCode [0-9]*/versionCode ${{ needs.compute-version.outputs.versionCode }}/" android/app/build.gradle
+          sed -i "s/versionName \".*\"/versionName \"${{ needs.compute-version.outputs.version }}\"/" android/app/build.gradle
+          echo "APK versionName ${{ needs.compute-version.outputs.version }} / versionCode ${{ needs.compute-version.outputs.versionCode }}"
+          grep -E "versionCode|versionName" android/app/build.gradle | head -2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Same config swap build.bat does locally: dev config is committed, export
+      # config is written for the build so the static export lands in out/.
+      - name: Build static export (fresh, never stale)
+        shell: bash
+        run: |
+          cp next.config.mjs next.config.mjs.dev
+          cat > next.config.mjs <<'EOF'
+          /** @type {import('next').NextConfig} */
+          const nextConfig = {
+            output: "export",
+            distDir: "out",
+            typescript: { ignoreBuildErrors: true },
+            images: { unoptimized: true },
+            assetPrefix: "./",
+            trailingSlash: true,
+          }
+          export default nextConfig
+          EOF
+          pnpm exec next build
+          cp next.config.mjs.dev next.config.mjs
+          rm -f next.config.mjs.dev
+
+      # Hydration guard — same protection as the desktop installer workflow.
+      - name: Hydration guard (fail if export is a dead shell)
+        shell: bash
+        run: |
+          if [ ! -f out/index.html ]; then
+            echo "::error::out/index.html missing - build produced nothing"
+            exit 1
+          fi
+          if ! grep -q "self.__next_f" out/index.html; then
+            echo "::error::No RSC flight data in out/index.html - React will never hydrate"
+            exit 1
+          fi
+          if ! grep -q "ProFlow" out/index.html; then
+            echo "::error::App shell marker missing from out/index.html"
+            exit 1
+          fi
+          CHUNKS=$(ls out/_next/static/chunks/*.js 2>/dev/null | wc -l)
+          if [ "${CHUNKS}" -lt 1 ]; then
+            echo "::error::No JS chunks under out/_next/static/chunks"
+            exit 1
+          fi
+          echo "OK: index.html is hydrated-ready with ${CHUNKS} JS chunks"
+
+      - name: Sync web assets into the Android project
+        run: pnpm exec cap sync android
+
+      # Capacitor 8's Android build targets Java 21, but the ubuntu-latest runner
+      # ships JDK 17 by default — install JDK 21 explicitly or Gradle fails with
+      # 'invalid source release: 21'.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Signed release APK — keystore.properties is committed for convenience,
+      # but the workflow also honors ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_PASSWORD
+      # secrets so the signing password can be kept out of the repo entirely.
+      - name: Build signed release APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Verify APK artifact is signed
+        shell: bash
+        run: |
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          ls -la android/app/build/outputs/apk/release/
+          if [ ! -f "${APK}" ]; then
+            echo "::error::No app-release.apk produced by Gradle"
+            exit 1
+          fi
+          SIZE=$(stat -c%s "${APK}" 2>/dev/null || echo 0)
+          echo "APK: ${APK} (${SIZE} bytes)"
+          if [ "${SIZE}" -lt 1000000 ]; then
+            echo "::error::APK suspiciously small (${SIZE} bytes) - build likely failed"
+            exit 1
+          fi
+          APKSIGNER=$(ls ${ANDROID_HOME}/build-tools/*/apksigner 2>/dev/null | tail -1)
+          if [ -z "${APKSIGNER}" ]; then
+            echo "::error::apksigner not found in Android build-tools"
+            exit 1
+          fi
+          if ! "${APKSIGNER}" verify --print-certs "${APK}" 2>&1 | tee /tmp/apk-certs.txt; then
+            echo "::error::APK signature verification FAILED"
+            exit 1
+          fi
+          echo "OK: APK is properly signed (v1/v2/v3 verified by apksigner)"
+
+      # The installer job already created the release (v<version> via
+      # electron-builder publish); append the APK to that same release so the
+      # Settings → About & Updates card finds both assets.
+      - name: Upload APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.compute-version.outputs.version }}
+          files: android/app/build/outputs/apk/release/app-release.apk
+          fail_on_unmatched_files: true

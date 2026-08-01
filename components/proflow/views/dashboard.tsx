@@ -16,6 +16,8 @@ import {
 import { cn, timeAgo } from "@/lib/utils"
 import { DragSortContainer, DragSortItem } from "../drag-sort"
 import { FocusChart } from "../focus-chart"
+import { EncouragementCard } from "../encouragement"
+import { WeeklyWrap } from "../weekly-wrap"
 import { TaskRow } from "../task-row"
 import { useStore, type EventItem, type View } from "../store"
 import { Card, CircularProgress, ProgressBar } from "../ui"
@@ -157,6 +159,8 @@ export function Dashboard() {
 
       {tab === "overview" && (
         <>
+          <EncouragementCard />
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {/* Today's Completion */}
             <div className="animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-both" style={{ animationDelay: "0ms" }}>
@@ -342,7 +346,9 @@ export function Dashboard() {
       )}
 
       {tab === "focus" && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <>
+          <WeeklyWrap />
+          <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <h2 className="text-lg font-semibold">Today&apos;s Habits</h2>
             <p className="text-sm text-muted-foreground">{habitsToday} of {habits.length} completed</p>
@@ -388,6 +394,7 @@ export function Dashboard() {
             <FocusChart />
           </div>
         </div>
+        </>
       )}
 
       {tab === "goals" && (

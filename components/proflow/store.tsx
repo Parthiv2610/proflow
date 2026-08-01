@@ -13,6 +13,7 @@ import {
 import { useLocalStorage } from "@/lib/use-local-storage"
 import { showNotification } from "@/lib/notify"
 import { playChime } from "@/lib/sound"
+import { celebrate } from "./confetti"
 import {
   buildCapLanInfo,
   clearPasscode,
@@ -231,6 +232,8 @@ type Store = {
   breakMinutes: number
   focusLog: FocusLogEntry[]
   recordFocusSession: () => void
+  xp: number
+  addXp: (amount: number) => void
   setFocusMinutes: (n: number) => void
   setBreakMinutes: (n: number) => void
   startTimer: () => void
@@ -244,9 +247,41 @@ type Store = {
 const StoreContext = createContext<Store | null>(null)
 
 /** Local date key in "YYYY-MM-DD" — used to group focus time and completions by day. */
-function todayKey() {
+export function todayKey() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+// ── XP & levels ────────────────────────────────────────────
+// Purely positive reinforcement: you earn XP by completing things, never lose
+// it, and level names are cheerful. Nothing here ever punishes a missed day.
+const LEVEL_NAMES = ["Beginner", "Novice", "Rookie", "Builder", "Achiever", "Expert", "Master", "Legend"]
+
+/** Cumulative XP needed to BE at the start of `level` (level 1 = 0). */
+export function xpForLevel(level: number): number {
+  return (100 * level * (level - 1)) / 2
+}
+
+/** XP needed to advance from `level` to the next one. */
+export function xpForNextLevel(level: number): number {
+  return 100 * level
+}
+
+/** The level a given XP total has reached. */
+export function levelFor(xp: number): number {
+  let level = 1
+  while ((100 * (level + 1) * level) / 2 <= xp) level++
+  return level
+}
+
+/** XP earned inside the current level (0 … xpForNextLevel). */
+export function xpIntoLevel(xp: number): number {
+  return xp - xpForLevel(levelFor(xp))
+}
+
+export function levelName(level: number): string {
+  const names = ["Beginner", "Novice", "Rookie", "Builder", "Achiever", "Expert", "Master", "Legend"]
+  return names[Math.min(level - 1, names.length - 1)] ?? `Level ${level}`
 }
 
 const DEFAULT_FOCUS_MINUTES = 25
@@ -278,6 +313,24 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [notes, setRawNotes] = useLocalStorage<Note[]>("notes", initialNotes)
   const [notifications, setRawNotifications] = useLocalStorage<AppNotification[]>("notifications", initialNotifications)
   const [focusLog, setRawFocusLog] = useLocalStorage<FocusLogEntry[]>("focusLog", [])
+
+  // XP — device-local progress (not synced, like theme/prefs).
+  const [xp, setXp] = useLocalStorage("xp", 0)
+  const xpRef = useRef(xp)
+  useEffect(() => {
+    xpRef.current = xp
+  }, [xp])
+
+  // Award XP (positive only) and celebrate when it crosses a level boundary.
+  // xpRef keeps the total authoritative across batched updates.
+  const addXp = useCallback((amount: number) => {
+    const before = levelFor(xpRef.current)
+    const next = xpRef.current + amount
+    xpRef.current = next
+    setXp(next)
+    const after = levelFor(next)
+    if (after > before) celebrate({ big: true })
+  }, [setXp])
 
   // Projects derived from real task data — no hardcoded demo projects. A task
   // can carry any project name; the sidebar/tasks view only ever shows projects
@@ -720,7 +773,10 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       }
       return [...prev, { date: key, minutes: focusMinutes, sessions: 1 }]
     })
-  }, [focusMinutes, setFocusLog])
+    // The dopamine hit for finishing a focus session.
+    addXp(25)
+    celebrate({ big: true })
+  }, [focusMinutes, setFocusLog, addXp])
 
   // Session end: chime / notify / auto-advance according to preferences.
   useEffect(() => {
@@ -799,6 +855,8 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setRawNotes([])
     setRawNotifications([])
     setRawFocusLog([])
+    setXp(0)
+    xpRef.current = 0
     setRawUserName("You")
     setAvatarUrl("")
     setTheme("Purple")
@@ -825,6 +883,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setRawNotes,
     setRawNotifications,
     setRawFocusLog,
+    setXp,
     setRawUserName,
     setAvatarUrl,
     setTheme,
@@ -868,46 +927,78 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
-  const cycleTaskStatus = useCallback((id: string) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== id) return t
-        const next: TaskStatus =
-          t.status === "todo" ? "in-progress" : t.status === "in-progress" ? "done" : "todo"
-        return {
-          ...t,
-          status: next,
-          overdue: next === "done" ? false : t.overdue,
-          completedAt: next === "done" && !t.completedAt ? todayKey() : t.completedAt,
-        }
-      }),
-    )
-  }, [])
+  const cycleTaskStatus = useCallback(
+    (id: string) => {
+      const t = tasks.find((x) => x.id === id)
+      const next: TaskStatus = t
+        ? t.status === "todo"
+          ? "in-progress"
+          : t.status === "in-progress"
+            ? "done"
+            : "todo"
+        : "todo"
+      // Reward + cheer only when a task is actually completed.
+      if (t && t.status !== "done" && next === "done") {
+        addXp(10)
+        celebrate()
+      }
+      setTasks((prev) =>
+        prev.map((x) =>
+          x.id === id
+            ? {
+                ...x,
+                status: next,
+                overdue: next === "done" ? false : x.overdue,
+                completedAt: next === "done" && !x.completedAt ? todayKey() : x.completedAt,
+              }
+            : x,
+        ),
+      )
+    },
+    [tasks, addXp],
+  )
 
-  const setTaskStatus = useCallback((id: string, status: TaskStatus) => {
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === id
-          ? {
-              ...t,
-              status,
-              overdue: status === "done" ? false : t.overdue,
-              completedAt: status === "done" && !t.completedAt ? todayKey() : t.completedAt,
-            }
-          : t,
-      ),
-    )
-  }, [])
+  const setTaskStatus = useCallback(
+    (id: string, status: TaskStatus) => {
+      const t = tasks.find((x) => x.id === id)
+      if (t && t.status !== "done" && status === "done") {
+        addXp(10)
+        celebrate()
+      }
+      setTasks((prev) =>
+        prev.map((x) =>
+          x.id === id
+            ? {
+                ...x,
+                status,
+                overdue: status === "done" ? false : x.overdue,
+                completedAt: status === "done" && !x.completedAt ? todayKey() : x.completedAt,
+              }
+            : x,
+        ),
+      )
+    },
+    [tasks, addXp],
+  )
 
-  const toggleHabit = useCallback((id: string) => {
-    setHabits((prev) =>
-      prev.map((h) =>
-        h.id === id
-          ? { ...h, doneToday: !h.doneToday, streak: h.doneToday ? Math.max(0, h.streak - 1) : h.streak + 1 }
-          : h,
-      ),
-    )
-  }, [])
+  const toggleHabit = useCallback(
+    (id: string) => {
+      const h = habits.find((x) => x.id === id)
+      // Reward + cheer only when a habit is marked done.
+      if (h && !h.doneToday) {
+        addXp(5)
+        celebrate()
+      }
+      setHabits((prev) =>
+        prev.map((x) =>
+          x.id === id
+            ? { ...x, doneToday: !x.doneToday, streak: x.doneToday ? Math.max(0, x.streak - 1) : x.streak + 1 }
+            : x,
+        ),
+      )
+    },
+    [habits, addXp],
+  )
 
   const addHabit = useCallback<Store["addHabit"]>((name, week) => {
     setHabits((prev) => [
@@ -1052,6 +1143,8 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       breakMinutes,
       focusLog,
       recordFocusSession,
+      xp,
+      addXp,
       setFocusMinutes,
       setBreakMinutes,
       startTimer,
@@ -1070,7 +1163,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       lanInfo, lanAuthed, lanOnline, lanBusy, lanError, lastSyncedAt, lanGateOpen,
       enableLan, disableLan, regenLanPasscode, submitLanPasscode, disconnectPhone, openLanGate, closeLanGate,
       secondsLeft, totalSeconds, running, mode, pomodoro, sessionLabel,
-      focusMinutes, breakMinutes, focusLog, recordFocusSession,
+      focusMinutes, breakMinutes, focusLog, recordFocusSession, xp, addXp,
       setFocusMinutes, setBreakMinutes,
       startTimer, pauseTimer, toggleTimer, skipTimer, stopTimer, resetTimer,
     ],

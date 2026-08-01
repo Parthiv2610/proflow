@@ -5,10 +5,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
   isElectron: true,
 
-  // Auto-update
+  // Auto-update (in-place, electron-updater)
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
-  checkForUpdate: () => ipcRenderer.invoke("check-for-update"),
-  downloadUpdate: (url) => ipcRenderer.invoke("download-update", url),
+  updateCheck: () => ipcRenderer.invoke("update:check"),
+  updateDownload: () => ipcRenderer.invoke("update:download"),
+  updateInstall: () => ipcRenderer.invoke("update:install"),
+  getUpdateStatus: () => ipcRenderer.invoke("update:get-status"),
+  onUpdateStatus: (callback) => {
+    const listener = (_event, data) => callback(data)
+    ipcRenderer.on("update:status", listener)
+    return () => ipcRenderer.removeListener("update:status", listener)
+  },
 
   // LAN Sync
   lanGetStatus: () => ipcRenderer.invoke("lan:get-status"),

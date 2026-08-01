@@ -1,9 +1,9 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require("electron")
+const { app, BrowserWindow, Menu, ipcMain } = require("electron")
 const path = require("path")
 const fs = require("fs")
-const https = require("https")
 const http = require("http")
 const os = require("os")
+const { autoUpdater } = require("electron-updater")
 const { startLanServer, getLanIPs, generatePasscode } = require("./lan-server")
 
 const isDev = !app.isPackaged
@@ -12,8 +12,8 @@ const isDev = !app.isPackaged
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required")
 
 // ---------------------------------------------------------------------------
-// Auto-update helpers
-// --------------------------------------------------------------------------
+// In-place auto-update (electron-updater — GitHub Releases feed)
+// ---------------------------------------------------------------------------
 
 /** Read the current app version from package.json */
 function getAppVersion() {
@@ -26,88 +26,45 @@ function getAppVersion() {
   }
 }
 
-/** The remote URL where versions.json is hosted */
-const UPDATE_URL =
-  process.env.PROFLOW_UPDATE_URL ||
-  "https://pro-flow-8mp2.vercel.app/versions.json"
+let updateState = { status: "idle" }
 
-/**
- * Fetch a JSON resource over HTTPS (with HTTP fallback).
- * Returns null on any network/parse error.
- */
-function fetchJSON(url) {
-  return new Promise((resolve) => {
-    const client = url.startsWith("https") ? https : http
-    const req = client.get(url, { timeout: 8000 }, (res) => {
-      if (res.statusCode !== 200) {
-        resolve(null)
-        return
-      }
-      const chunks = []
-      res.on("data", (c) => chunks.push(c))
-      res.on("end", () => {
-        try {
-          resolve(JSON.parse(Buffer.concat(chunks).toString()))
-        } catch {
-          resolve(null)
-        }
-      })
-    })
-    req.on("error", () => resolve(null))
-    req.on("timeout", () => {
-      req.destroy()
-      resolve(null)
-    })
-  })
-}
-
-/** Compare two semver strings; returns true if a > b */
-function isNewerVersion(a, b) {
-  const pa = a.split(".").map(Number)
-  const pb = b.split(".").map(Number)
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const na = pa[i] || 0
-    const nb = pb[i] || 0
-    if (na > nb) return true
-    if (na < nb) return false
+/** Forward an auto-updater event to the renderer (Settings → About & Updates). */
+function sendUpdateStatus(payload) {
+  updateState = { ...updateState, ...payload }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("update:status", updateState)
   }
-  return false
 }
 
-/**
- * Check for a newer version and optionally show a dialog.
- * Returns the remote manifest (or null) so the caller can act on it.
- */
-async function checkForUpdate() {
-  const manifest = await fetchJSON(UPDATE_URL)
-  if (!manifest) return null
+function wireAutoUpdater() {
+  // Let the user choose when to download/restart — the renderer drives the flow.
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = true
 
-  const currentVer = getAppVersion()
-  const remoteVer = manifest.latestVersion
-  if (!remoteVer || !isNewerVersion(remoteVer, currentVer)) return null
+  autoUpdater.on("checking-for-update", () => sendUpdateStatus({ status: "checking" }))
+  autoUpdater.on("update-available", (info) =>
+    sendUpdateStatus({
+      status: "available",
+      version: info && info.version,
+      releaseNotes: info && info.releaseNotes,
+    }),
+  )
+  autoUpdater.on("update-not-available", () => sendUpdateStatus({ status: "uptodate" }))
+  autoUpdater.on("download-progress", (p) =>
+    sendUpdateStatus({ status: "downloading", percent: Math.round((p && p.percent) || 0) }),
+  )
+  autoUpdater.on("update-downloaded", (info) =>
+    sendUpdateStatus({ status: "downloaded", version: info && info.version }),
+  )
+  autoUpdater.on("error", (err) =>
+    sendUpdateStatus({ status: "error", message: String((err && err.message) || err) }),
+  )
 
-  return manifest
-}
-
-/** Show a native dialog asking the user to download the update */
-function showUpdateDialog(manifest) {
-  const win = BrowserWindow.getFocusedWindow()
-  if (!win) return
-
-  const result = dialog.showMessageBoxSync(win, {
-    type: "info",
-    title: "Update Available",
-    message: `ProFlow v${manifest.latestVersion} is available!`,
-    detail:
-      manifest.releaseNotes ||
-      `You're using v${getAppVersion()}. Download the latest version to get new features and fixes.`,
-    buttons: ["Download", "Not Now"],
-    defaultId: 0,
-    cancelId: 1,
-  })
-
-  if (result === 0 && manifest.downloadUrl) {
-    shell.openExternal(manifest.downloadUrl)
+  if (!isDev) {
+    // Check for updates shortly after launch (production only).
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch(() => {})
+    }, 4000)
   }
 }
 
@@ -294,22 +251,35 @@ ipcMain.handle("get-app-version", () => {
   return getAppVersion()
 })
 
-ipcMain.handle("check-for-update", async () => {
-  const manifest = await checkForUpdate()
-  if (!manifest) {
-    return { hasUpdate: false, currentVersion: getAppVersion() }
-  }
-  return {
-    hasUpdate: true,
-    currentVersion: getAppVersion(),
-    latestVersion: manifest.latestVersion,
-    downloadUrl: manifest.downloadUrl,
-    releaseNotes: manifest.releaseNotes,
+// Return the cached update state — the launch-time auto-check may have finished
+// before the Settings view mounted, so the renderer asks for it on subscribe.
+ipcMain.handle("update:get-status", () => updateState)
+
+// In-place auto-update — the installer is downloaded and applied silently over
+// the current install (no uninstall, no reinstall, data preserved).
+ipcMain.handle("update:check", async () => {
+  if (isDev) return { status: "dev" }
+  try {
+    autoUpdater.checkForUpdates()
+    return { status: "checking" }
+  } catch (err) {
+    return { status: "error", message: String((err && err.message) || err) }
   }
 })
 
-ipcMain.handle("download-update", async (_event, url) => {
-  if (url) shell.openExternal(url)
+ipcMain.handle("update:download", async () => {
+  try {
+    autoUpdater.downloadUpdate()
+    return { status: "downloading" }
+  } catch (err) {
+    return { status: "error", message: String((err && err.message) || err) }
+  }
+})
+
+ipcMain.handle("update:install", async () => {
+  // Apply the downloaded update and restart into it.
+  autoUpdater.quitAndInstall(false, true)
+  return { status: "installing" }
 })
 
 // LAN Sync IPC
@@ -378,18 +348,9 @@ app.whenReady().then(async () => {
   // it enabled — the preference lives in the renderer's localStorage and is
   // replayed through lan:set-enabled once the window loads.
 
-  // Check for updates on startup (only in production, after a short delay)
-  if (!isDev) {
-    // Wait for the window to finish loading, then check
-    win.webContents.on("did-finish-load", async () => {
-      // Give the user a moment to see the app before interrupting
-      await new Promise((r) => setTimeout(r, 3000))
-      const manifest = await checkForUpdate()
-      if (manifest) {
-        showUpdateDialog(manifest)
-      }
-    })
-  }
+  // Wire electron-updater events → renderer and check for updates on launch
+  // (production only, after a short delay so the app opens instantly).
+  wireAutoUpdater()
 })
 
 app.on("window-all-closed", () => {

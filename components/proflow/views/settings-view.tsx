@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState, useEffect } from "react"
+import { useRef, useState } from "react"
 import {
   Camera,
   Trash2,
@@ -18,6 +18,7 @@ import {
 import QRCode from "react-qr-code"
 import { cn, timeAgo } from "@/lib/utils"
 import { getStoredLaptopUrl } from "@/lib/lan-sync"
+import { useUpdate } from "@/lib/use-update"
 import { Card, PageHeader } from "../ui"
 import { useStore, ACCENTS } from "../store"
 
@@ -585,94 +586,50 @@ function LanSyncCard() {
 }
 
 function UpdateCard() {
-  const [appVersion, setAppVersion] = useState("1.0.0")
-  const [updateState, setUpdateState] = useState<
-    "idle" | "checking" | "available" | "uptodate" | "error"
-  >("idle")
-  const [updateInfo, setUpdateInfo] = useState<{
-    latestVersion?: string
-    downloadUrl?: string
-    releaseNotes?: string
-  } | null>(null)
+  const {
+    isElectron,
+    isCap,
+    appVersion,
+    status: updateState,
+    info: updateInfo,
+    progress,
+    errorMsg,
+    check: handleCheck,
+    download: handleDownload,
+    install: handleInstall,
+  } = useUpdate()
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const api = (window as any).electronAPI
-        if (api?.getAppVersion) {
-          const ver = await api.getAppVersion()
-          if (ver) setAppVersion(ver)
-        }
-      } catch {}
-    }
-    load()
-  }, [])
-
-  const handleCheck = async () => {
-    setUpdateState("checking")
-    try {
-      const api = (window as any).electronAPI
-      if (!api?.checkForUpdate) {
-        // Running in browser — no Electron API
-        setUpdateState("error")
-        return
-      }
-      const result = await api.checkForUpdate()
-      if (result.hasUpdate) {
-        setUpdateInfo({
-          latestVersion: result.latestVersion,
-          downloadUrl: result.downloadUrl,
-          releaseNotes: result.releaseNotes,
-        })
-        setUpdateState("available")
-      } else {
-        setUpdateState("uptodate")
-      }
-    } catch {
-      setUpdateState("error")
-    }
-  }
-
-  const handleDownload = async () => {
-    if (updateInfo?.downloadUrl) {
-      const api = (window as any).electronAPI
-      if (api?.downloadUpdate) {
-        await api.downloadUpdate(updateInfo.downloadUrl)
-      } else {
-        window.open(updateInfo.downloadUrl, "_blank")
-      }
-    }
-  }
-
-  const isElectron = !!(window as any).electronAPI?.isElectron
+  const platformLabel = isCap ? "ProFlow Android" : isElectron ? "ProFlow Desktop" : "ProFlow"
+  const platformBadge = !isElectron && !isCap ? (
+    <span className="ml-2 rounded bg-warning/20 px-1.5 py-0.5 text-[10px] font-medium text-warning">Web</span>
+  ) : null
 
   return (
     <div className="mt-4 space-y-3">
       <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/20 p-3">
         <div>
-          <p className="text-sm font-medium text-foreground">
-            ProFlow Desktop
-          </p>
+          <p className="text-sm font-medium text-foreground">{platformLabel}</p>
           <p className="text-xs text-muted-foreground">
             Version {appVersion}
-            {!isElectron && (
-              <span className="ml-2 rounded bg-warning/20 px-1.5 py-0.5 text-[10px] font-medium text-warning">
-                Web
-              </span>
-            )}
+            {platformBadge}
           </p>
         </div>
 
         <button
           type="button"
           onClick={handleCheck}
-          disabled={updateState === "checking"}
+          disabled={updateState === "checking" || updateState === "downloading"}
           className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
         >
           {updateState === "checking" ? (
             <>
               <Loader2 className="size-3.5 animate-spin" />
               Checking…
+            </>
+          ) : updateState === "downloading" ? (
+            <>
+              <Loader2 className="size-3.5 animate-spin" />
+              Downloading {progress}%
             </>
           ) : (
             <>
@@ -683,6 +640,25 @@ function UpdateCard() {
         </button>
       </div>
 
+      {/* In-place download progress bar */}
+      {updateState === "downloading" && isElectron && (
+        <div className="rounded-lg border border-border bg-secondary/20 p-3">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Downloading update…</span>
+            <span className="font-medium text-foreground">{progress}%</span>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-300"
+              style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Installs over the current version — your data stays. No reinstall needed.
+          </p>
+        </div>
+      )}
+
       {/* Update available */}
       {updateState === "available" && updateInfo && (
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
@@ -692,10 +668,13 @@ function UpdateCard() {
                 🎉 ProFlow v{updateInfo.latestVersion} Available
               </p>
               {updateInfo.releaseNotes && (
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {updateInfo.releaseNotes}
-                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{updateInfo.releaseNotes}</p>
               )}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {isCap
+                  ? "Updates in place with the same signature — tasks, habits and notes are kept."
+                  : "Installs over the current version — your data is kept."}
+              </p>
             </div>
             <button
               type="button"
@@ -703,8 +682,50 @@ function UpdateCard() {
               className="flex shrink-0 items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             >
               <ExternalLink className="size-3.5" />
-              Download
+              {isCap ? "Download & Install" : "Download Update"}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Ready to install (electron) */}
+      {updateState === "downloaded" && isElectron && (
+        <div className="rounded-lg border border-success/30 bg-success/5 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                Update v{updateInfo?.latestVersion || ""} ready
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Restart to finish installing — takes a few seconds.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleInstall}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              <RefreshCw className="size-3.5" />
+              Restart &amp; Update
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Android: the system installer has been handed the APK */}
+      {updateState === "downloaded" && isCap && (
+        <div className="rounded-lg border border-success/30 bg-success/5 p-3">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" />
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                Update v{updateInfo?.latestVersion || ""} downloaded
+              </p>
+              <p className="text-xs text-muted-foreground">
+                The system installer should now be open — tap Install (over the current version).
+                Your tasks, habits and notes are kept.
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -713,19 +734,17 @@ function UpdateCard() {
       {updateState === "uptodate" && (
         <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/5 p-3">
           <CheckCircle2 className="size-4 text-success" />
-          <p className="text-sm text-foreground">
-            ProFlow is up to date (v{appVersion})
-          </p>
+          <p className="text-sm text-foreground">ProFlow is up to date (v{appVersion})</p>
         </div>
       )}
 
       {/* Error / browser mode */}
-      {updateState === "error" && !isElectron && (
+      {updateState === "error" && !isElectron && !isCap && (
         <div className="rounded-lg border border-border bg-secondary/20 p-3">
           <p className="text-xs text-muted-foreground">
             Auto-updates are available in the desktop app.{" "}
             <a
-              href="https://github.com/parth-kulkarni1/pro-flow/releases"
+              href="https://github.com/Parthiv2610/proflow/releases"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary underline underline-offset-2 hover:text-primary/80"
@@ -736,10 +755,10 @@ function UpdateCard() {
         </div>
       )}
 
-      {updateState === "error" && isElectron && (
+      {(updateState === "error" && (isElectron || isCap)) && (
         <div className="rounded-lg border border-danger/30 bg-danger/5 p-3">
           <p className="text-xs text-muted-foreground">
-            Could not check for updates. Check your internet connection and try again.
+            {errorMsg || "Could not check for updates. Check your internet connection and try again."}
           </p>
         </div>
       )}

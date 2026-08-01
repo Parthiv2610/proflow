@@ -3,8 +3,8 @@
 import { Coffee, Minus, Pause, Play, Plus, RotateCcw, SkipForward, Square, Timer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { formatTime, useStore } from "../store"
-import { Card, CircularProgress, PageHeader } from "../ui"
+import { formatTime, levelFor, levelName, useStore, xpIntoLevel, xpForNextLevel } from "../store"
+import { Card, CircularProgress, PageHeader, ProgressBar } from "../ui"
 
 export function FocusView() {
   const {
@@ -24,6 +24,7 @@ export function FocusView() {
     stopTimer,
     resetTimer,
     focusLog,
+    xp,
   } = useStore()
 
   // Real today stats from recorded focus sessions — zero on a fresh install.
@@ -50,6 +51,8 @@ export function FocusView() {
   })()
 
   const progress = ((totalSeconds - secondsLeft) / totalSeconds) * 100
+  const level = levelFor(xp)
+  const levelPct = Math.min(100, Math.round((xpIntoLevel(xp) / xpForNextLevel(level)) * 100))
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 p-6">
@@ -167,6 +170,20 @@ export function FocusView() {
             <Stat label="Deep work" value={`${todayMinutes > 0 ? (todayMinutes / 60).toFixed(1) : "0.0"} hrs`} tone="text-info" />
             <Stat label="Sessions completed" value={String(todaySessions)} tone="text-primary" />
             <Stat label="Focus streak" value={`${focusStreak} days`} tone="text-focus" />
+          </Card>
+
+          <Card className="flex flex-col gap-3">
+            <h2 className="font-semibold">Level &amp; XP</h2>
+            <div className="flex items-center justify-between rounded-xl bg-secondary/40 px-3 py-2.5">
+              <span className="text-sm text-muted-foreground">Level {level} · {levelName(level)}</span>
+              <span className="text-sm font-semibold text-primary tabular-nums">{xp} XP</span>
+            </div>
+            <div className="rounded-xl bg-secondary/40 px-3 py-2.5">
+              <ProgressBar value={levelPct} tone="primary" />
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {xpForNextLevel(level) - xpIntoLevel(xp)} XP to Level {level + 1} · each completed session earns +25 XP
+              </p>
+            </div>
           </Card>
         </div>
       </div>

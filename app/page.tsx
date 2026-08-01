@@ -18,6 +18,7 @@ import { Sidebar } from "@/components/proflow/sidebar"
 import { Topbar } from "@/components/proflow/topbar"
 import { BottomTabs } from "@/components/proflow/bottom-tabs"
 import { WelcomeTour } from "@/components/proflow/welcome-tour"
+import { UpdateBanner } from "@/components/proflow/update-banner"
 
 function Workspace() {
   const { view, focusMode, toggleFocusMode, sidebarOpen, closeSidebar } = useStore()
@@ -101,6 +102,9 @@ function Workspace() {
 
           {/* Exit Focus Mode badge (only shows when focusMode is true) */}
           <FocusModeExit />
+
+          {/* One-click update prompt — appears on any view when a newer build exists */}
+          {!focusMode && <UpdateBanner />}
         </main>
 
         {/* Phone bottom tab bar — fast navigation on the APK; hidden on desktop & focus mode */}

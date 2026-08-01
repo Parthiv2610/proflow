@@ -22,7 +22,7 @@ Track tasks, habits, goals, calendar events, and deep work sessions — all in o
 | 🎯 **Habits & Goals** | Track daily routines and goal progress with streak tracking |
 | ⏱ **Focus Timer** | Pomodoro deep work sessions with play/pause/skip controls |
 | 🎬 **Page Animations** | Smooth fade-in transitions, staggered card animations, hover effects |
-| 🔄 **Auto-Update** | Checks for new versions on startup, prompts to download |
+| 🔄 **Auto-Update** | Installs new versions in place — no uninstall, no data loss |
 | ⌨️ **Command Palette** | Press `⌘P` / `Ctrl+P` to search views, create tasks, navigate |
 | 🧘 **Focus Mode** | Distraction-free mode hiding sidebar and topbar |
 | 🎉 **Welcome Tour** | 8-step onboarding overlay on first visit |
@@ -42,23 +42,36 @@ There are two ways to use ProFlow — pick whichever fits you.
 Just install and use the app on your computer. Everything is saved locally on
 your machine and works fully offline.
 
-1. Download and run `ProFlow-Setup-2.1.0.exe` from the latest release
+1. Download the installer (always the latest):
+   `https://github.com/Parthiv2610/proflow/releases/latest/download/ProFlow-Setup.exe`
 2. Click through the installer — it installs to `C:\Program Files\ProFlow`
 3. Open ProFlow and start adding tasks, habits, goals, events, and notes
 
 That's it — no account, no setup, no internet required.
 
+> 🔄 **Install once, update forever.** After the first install you never need to
+> download another installer: every time the developer pushes new code to GitHub,
+> CI automatically builds a new release, and ProFlow updates **in place** — a
+> banner appears in the app, you click **Update**, it installs over the current
+> version and restarts. Your tasks, habits, notes and settings are always kept.
+
 ### 2️⃣ 📱 Android APK (native app)
 
 A **ProFlow APK** (`app-release.apk`, properly signed) is built automatically by GitHub
-Actions on every `v*` release tag and attached to the release page — grab it from
-**Releases → Assets → `app-release.apk`**.
+Actions on every push and attached to the latest release. The download link never
+changes — it always points at the newest build:
+`https://github.com/Parthiv2610/proflow/releases/latest/download/app-release.apk`
 
-**Install:**
+**Install (first time only):**
 
-1. Download `app-release.apk` on your Android phone
+1. Download `app-release.apk` on your Android phone (link above)
 2. Tap it — Android may ask to allow installs from your browser; allow it
 3. If prompted by Play Protect, tap **Install anyway** (it's a self-built app, not from the Play Store)
+
+> 🔄 **Install once, update forever.** Future updates are pushed through the app
+> itself: a banner appears, you tap **Update**, the APK downloads and the system
+> installer installs it **over** the current version (same signature, same
+> keystore) — all your data is preserved. No need to re-download the APK.
 
 **Link it to your laptop (same Wi-Fi):**
 
@@ -71,8 +84,11 @@ The APK syncs both ways, no account, no internet,
 just the same Wi-Fi. Not connected yet? It shows "Not connected" and a hint instead of a
 confusing passcode prompt.
 
-You could just use only the laptop app or phone app seperately
+You could just use only the laptop app or phone app separately
 
+> 🛠️ **Build it yourself:** run `pnpm exec cap sync android && cd android && ./gradlew assembleRelease`
+> after a `next build` to produce the signed APK locally (the signing keystore lives in
+> `android/app/proflow-release.keystore` with `keystore.properties`).
 
 > 🔐 **Signing note:** the keystore and its password are committed for convenience so the
 > CI build works out of the box. The workflow already honors the `ANDROID_KEYSTORE_PASSWORD`
@@ -113,6 +129,8 @@ pnpm install
 # Start the Next.js dev server
 pnpm dev
 ```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser to see the web version.
 
 ### Run the Electron desktop app
 
@@ -191,7 +209,8 @@ pro-flow/
 │   └── lan-server.js         # LAN sync server (Wi-Fi phone access)
 ├── lib/                      # Utility functions
 │   ├── use-local-storage.ts  # localStorage persistence hook
-│   └── lan-sync.ts           # Renderer-side LAN sync (phone polling, detection)
+│   ├── lan-sync.ts           # Renderer-side LAN sync (phone polling, detection)
+│   └── use-update.ts         # Shared auto-update state machine (desktop + Android)
 ├── public/                   # Static assets
 ├── build/                    # Build scripts & installer config
 │   ├── installer-manual.nsi  # NSIS installer script (manual route)
@@ -231,7 +250,7 @@ powershell -File build\sign-installer.ps1
 To stop SmartScreen warnings when users download the installer:
 
 1. Go to [Microsoft Security Intelligence File Submission](https://www.microsoft.com/en-us/wdsi/filesubmission)
-2. Upload the signed `ProFlow-Setup-2.1.0.exe`
+2. Upload the signed `ProFlow-Setup.exe`
 3. Mark it as "Clean file"
 4. Submit and wait 24–48 hours for review
 
