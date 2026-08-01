@@ -103,7 +103,11 @@ jobs:
       # secrets so the signing password can be kept out of the repo entirely.
       - name: Build signed release APK
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon
+        # gradlew can lose its +x bit when committed from Windows, so ensure it's
+        # executable on the Linux runner before invoking it.
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
