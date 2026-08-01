@@ -2,7 +2,15 @@
 # This script assumes the certificate is already installed in Cert:\CurrentUser\My
 # (run create-cert.ps1 first if it's not)
 
-$installerPath = "C:\Users\parth\Desktop\Python\pro-flow\release\ProFlow-Setup-2.0.0.exe"
+# Target the newest ProFlow-Setup-*.exe in release/ (version-agnostic so this
+# script never goes stale when a new version ships).
+$installerPath = Get-ChildItem (Join-Path $PSScriptRoot "..\release") -Filter "ProFlow-Setup-*.exe" -File |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
+
+if (-not $installerPath) {
+    Write-Host "ERROR: No ProFlow-Setup-*.exe found in release/. Build the installer first."
+    exit 1
+}
 
 Write-Host "=== Signing ProFlow Setup.exe ==="
 Write-Host ""
@@ -23,20 +31,27 @@ Write-Host ""
 
 Write-Host "Signing: $installerPath"
 $result = Set-AuthenticodeSignature -FilePath $installerPath -Certificate $cert -HashAlgorithm SHA256 -Force
-Write-Host "  Result: $($result.Status)"
-
-$verify = Get-AuthenticodeSignature -FilePath $installerPath
+Write-Host "  Result: $($result.Status)"$verify = Get-AuthenticodeSignature -FilePath $installerPath
 Write-Host "  Verify: $($verify.Status)"
-Write-Host "  Subject: $($verify.SignerCertificate.Subject)"
+if ($verify.SignerCertificate) {
+    Write-Host "  Subject: $($verify.SignerCertificate.Subject)"
+}
 
 if ($verify.Status -eq "Valid") {
     Write-Host ""
-    Write-Host "✅ Setup.exe is properly signed!"
+    Write-Host "✅ Setup.exe is properly signed AND trusted on this machine!"
+} elseif ($verify.SignerCertificate -and $verify.Status -eq "UnknownError") {
+    Write-Host ""
+    Write-Host "ℹ️ Signature is embedded, but the certificate is not yet trusted here."
+    Write-Host "  To trust it locally, run:"
+    Write-Host "    powershell -ExecutionPolicy Bypass -File build\install-root-cert.ps1"
+    Write-Host "  Then re-run this script to confirm 'Valid'."
+    Write-Host ""
+    Write-Host "NOTE: This is a SELF-SIGNED certificate, so SmartScreen/Defender may still"
+    Write-Host "show an 'Unknown publisher' warning for OTHER people. It proves the file"
+    Write-Host "hasn't been tampered with, but only a paid CA cert or SmartScreen"
+    Write-Host "reputation will clear the 'Windows protected your PC' block for them."
 } else {
     Write-Host ""
-    Write-Host "WARNING: Signature status is $($verify.Status)."
-    Write-Host "  The installer may still be signed, but the certificate is not"
-    Write-Host "  trusted on this machine. To trust it, run:"
-    Write-Host "    powershell -File build\install-root-cert.ps1"
-    Write-Host "  (This installs the self-signed cert into the Trusted Root store.)"
+    Write-Host "WARNING: Signature status is $($verify.Status). The signing may have failed."
 }
