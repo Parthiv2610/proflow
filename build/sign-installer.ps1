@@ -31,7 +31,8 @@ Write-Host ""
 
 Write-Host "Signing: $installerPath"
 $result = Set-AuthenticodeSignature -FilePath $installerPath -Certificate $cert -HashAlgorithm SHA256 -Force
-Write-Host "  Result: $($result.Status)"$verify = Get-AuthenticodeSignature -FilePath $installerPath
+Write-Host "  Result: $($result.Status)"
+$verify = Get-AuthenticodeSignature -FilePath $installerPath
 Write-Host "  Verify: $($verify.Status)"
 if ($verify.SignerCertificate) {
     Write-Host "  Subject: $($verify.SignerCertificate.Subject)"
@@ -39,10 +40,10 @@ if ($verify.SignerCertificate) {
 
 if ($verify.Status -eq "Valid") {
     Write-Host ""
-    Write-Host "✅ Setup.exe is properly signed AND trusted on this machine!"
+    Write-Host "[OK] Setup.exe is properly signed AND trusted on this machine!"
 } elseif ($verify.SignerCertificate -and $verify.Status -eq "UnknownError") {
     Write-Host ""
-    Write-Host "ℹ️ Signature is embedded, but the certificate is not yet trusted here."
+    Write-Host "[INFO] Signature is embedded, but the certificate is not yet trusted here."
     Write-Host "  To trust it locally, run:"
     Write-Host "    powershell -ExecutionPolicy Bypass -File build\install-root-cert.ps1"
     Write-Host "  Then re-run this script to confirm 'Valid'."
