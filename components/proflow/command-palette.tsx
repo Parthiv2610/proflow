@@ -23,6 +23,7 @@ import {
   ArrowRight,
   SquarePen,
   Sparkles,
+  Trophy,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useStore, type View } from "./store"
@@ -56,8 +57,9 @@ const navActions: NavAction[] = [
   { kind: "navigate", view: "notes", label: "Notes & Docs", icon: FileText, shortcut: "⌘4" },
   { kind: "navigate", view: "habits", label: "Habits & Goals", icon: Target, shortcut: "⌘5" },
   { kind: "navigate", view: "focus", label: "Focus Timer", icon: Timer, shortcut: "⌘6" },
-  { kind: "navigate", view: "notifications", label: "Notifications", icon: Bell, shortcut: "⌘7" },
-  { kind: "navigate", view: "settings", label: "Settings", icon: Settings, shortcut: "⌘8" },
+  { kind: "navigate", view: "progress", label: "Progress & Badges", icon: Trophy, shortcut: "⌘7" },
+  { kind: "navigate", view: "notifications", label: "Notifications", icon: Bell, shortcut: "⌘8" },
+  { kind: "navigate", view: "settings", label: "Settings", icon: Settings, shortcut: "⌘9" },
 ]
 
 export function CommandPalette({

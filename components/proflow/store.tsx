@@ -35,6 +35,7 @@ export type View =
   | "notes"
   | "habits"
   | "focus"
+  | "progress"
   | "notifications"
   | "settings"
 
@@ -234,6 +235,15 @@ type Store = {
   recordFocusSession: () => void
   xp: number
   addXp: (amount: number) => void
+  streakShields: number
+  buyShield: () => boolean
+
+  // achievements & milestones
+  achievements: Record<string, string>
+  bestStreak: number
+  totalTasksDone: number
+  pendingBadges: Achievement[]
+  dismissBadge: () => void
   setFocusMinutes: (n: number) => void
   setBreakMinutes: (n: number) => void
   startTimer: () => void
@@ -284,6 +294,48 @@ export function levelName(level: number): string {
   return names[Math.min(level - 1, names.length - 1)] ?? `Level ${level}`
 }
 
+// ── Streak shields ────────────────────────────────────────────
+// Insurance against a missed habit day, bought with XP. A shield absorbs one
+// missed scheduled day so the streak survives; you can hold at most 2 at once.
+// Price sits at the Level-3 milestone (~3 days of typical use) so shields are
+// precious but reachable.
+export const SHIELD_PRICE = 300
+export const MAX_SHIELDS = 2
+
+// Free shield as a level-up prize at every 5th level (5, 10, 15, …). The first
+// lands at 1000 XP — over three shields' worth of earning — then rewards space
+// out even more as levels get slower, so free shields stay genuinely scarce.
+// The 2-shield cap keeps the economy honest: at max, the reward converts to
+// half the shield price in XP instead of being wasted.
+export const FREE_SHIELD_EVERY_LEVELS = 5
+
+/** The next level that pays out a free shield (level 1 → 5, level 5 → 10, …). */
+export function nextShieldMilestone(level: number): number {
+  return level + (FREE_SHIELD_EVERY_LEVELS - (level % FREE_SHIELD_EVERY_LEVELS))
+}
+
+// ── Achievements & milestones ─────────────────────────────────
+// Permanent badges earned once, celebrated with a popup + confetti when a
+// milestone is crossed. Stored per-device (like XP) as id → earned "YYYY-MM-DD".
+export type AchievementCategory = "streak" | "tasks"
+export type Achievement = {
+  id: string
+  name: string
+  desc: string
+  icon: string
+  category: AchievementCategory
+  threshold: number
+}
+
+export const ACHIEVEMENTS: Achievement[] = [
+  { id: "streak-3", name: "First Flame", desc: "Reach a 3-day habit streak", icon: "🔥", category: "streak", threshold: 3 },
+  { id: "streak-7", name: "Week Warrior", desc: "Reach a 7-day habit streak", icon: "⚡", category: "streak", threshold: 7 },
+  { id: "streak-14", name: "Two-Week Titan", desc: "Reach a 14-day habit streak", icon: "🏆", category: "streak", threshold: 14 },
+  { id: "tasks-10", name: "On a Roll", desc: "Complete 10 tasks", icon: "✅", category: "tasks", threshold: 10 },
+  { id: "tasks-50", name: "Task Terminator", desc: "Complete 50 tasks", icon: "💪", category: "tasks", threshold: 50 },
+  { id: "tasks-100", name: "Century Club", desc: "Complete 100 tasks", icon: "🚀", category: "tasks", threshold: 100 },
+]
+
 const DEFAULT_FOCUS_MINUTES = 25
 const DEFAULT_BREAK_MINUTES = 5
 
@@ -332,6 +384,163 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     if (after > before) celebrate({ big: true })
   }, [setXp])
 
+  // Streak shields — persisted, device-local (like XP). You can hold at most
+  // MAX_SHIELDS; buying one costs SHIELD_PRICE XP.
+  const [streakShields, setStreakShields] = useLocalStorage("streakShields", 0)
+  const [lastHabitCheck, setLastHabitCheck] = useLocalStorage("lastHabitCheck", "")
+
+  // A ref mirror makes the cap check race-safe against rapid clicks (the state
+  // closure can be stale within one render frame); XP is already ref-authoritative.
+  const shieldsRef = useRef(streakShields)
+  useEffect(() => {
+    shieldsRef.current = streakShields
+  }, [streakShields])
+  // Guards the day-rollover against double-processing within one render frame.
+  const habitCheckRef = useRef("")
+
+  // ── Free shield level rewards ─────────────────────────────────
+  // Highest level milestone that has already paid out a free shield.
+  const [lastShieldMilestone, setLastShieldMilestone] = useLocalStorage("lastShieldMilestone", 0)
+  const shieldMilestoneRef = useRef(lastShieldMilestone)
+  useEffect(() => {
+    shieldMilestoneRef.current = lastShieldMilestone
+  }, [lastShieldMilestone])
+
+  // Free shield at every FREE_SHIELD_EVERY_LEVELS-th level (3, 6, 9, …). Watches
+  // XP so the reward fires exactly when a milestone level is crossed — ref-guarded
+  // against double-grants, and at MAX_SHIELDS it pays half the shield price in XP
+  // instead of wasting the prize.
+  //
+  // First run after this feature ships: seed silently to the current level's
+  // milestone so long-time users don't get a retroactive shield/popup burst for
+  // levels they already passed — the prize counts from now on (matches the
+  // achievements seed pattern).
+  useEffect(() => {
+    const level = levelFor(xp)
+    try {
+      if (localStorage.getItem("proflow-lastShieldMilestone") === null) {
+        const seeded = Math.floor(level / FREE_SHIELD_EVERY_LEVELS) * FREE_SHIELD_EVERY_LEVELS
+        shieldMilestoneRef.current = seeded
+        setLastShieldMilestone(seeded)
+        return
+      }
+    } catch {
+      // storage unavailable — fall through to the in-memory grant path below
+    }
+    let paid = shieldMilestoneRef.current
+    while (paid + FREE_SHIELD_EVERY_LEVELS <= level) {
+      const milestone = paid + FREE_SHIELD_EVERY_LEVELS
+      shieldMilestoneRef.current = milestone
+      setLastShieldMilestone(milestone)
+      if (shieldsRef.current < MAX_SHIELDS) {
+        shieldsRef.current += 1
+        setStreakShields(shieldsRef.current)
+        celebrate({ big: true })
+        showNotification("ProFlow", `🎁 Level ${milestone} reached — you earned a free streak shield!`)
+      } else {
+        const bonus = Math.round(SHIELD_PRICE / 2)
+        xpRef.current += bonus
+        setXp(xpRef.current)
+        showNotification("ProFlow", `🎁 Level ${milestone} reached — shields are full, so here's ${bonus} XP instead!`)
+      }
+      paid = milestone
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [xp])
+
+  // ── Achievements state ────────────────────────────────────────
+  const [achievements, setAchievements] = useLocalStorage<Record<string, string>>("achievements", {})
+  const achievementsRef = useRef(achievements)
+  useEffect(() => {
+    achievementsRef.current = achievements
+  }, [achievements])
+  const [bestStreak, setBestStreak] = useLocalStorage("bestStreak", 0)
+  const bestStreakRef = useRef(bestStreak)
+  useEffect(() => {
+    bestStreakRef.current = bestStreak
+  }, [bestStreak])
+  const [totalTasksDone, setTotalTasksDone] = useLocalStorage("totalTasksDone", 0)
+  const totalTasksRef = useRef(totalTasksDone)
+  useEffect(() => {
+    totalTasksRef.current = totalTasksDone
+  }, [totalTasksDone])
+  // Queue of badges waiting to be celebrated — if several milestones cross at
+  // once (e.g. a long-time user linking a fresh phone), each gets its own popup.
+  const [pendingBadges, setPendingBadges] = useState<Achievement[]>([])
+  const dismissBadge = useCallback(() => setPendingBadges((prev) => prev.slice(1)), [])
+
+  // Award a badge exactly once (ref-guarded against rapid multi-fire); the popup
+  // + confetti + notification are the celebration for crossing a milestone.
+  const awardIfNew = useCallback(
+    (a: Achievement) => {
+      if (achievementsRef.current[a.id]) return
+      achievementsRef.current = { ...achievementsRef.current, [a.id]: todayKey() }
+      setAchievements(achievementsRef.current)
+      setPendingBadges((prev) => (prev.some((b) => b.id === a.id) ? prev : [...prev, a]))
+      celebrate({ big: true })
+      showNotification("ProFlow", `🏅 Achievement unlocked: ${a.name}!`)
+    },
+    [setAchievements],
+  )
+
+  // Streak milestones (3/7/14): track the all-time best streak; award any
+  // thresholds the new best crosses.
+  const checkStreakMilestones = useCallback(
+    (streak: number) => {
+      if (streak > bestStreakRef.current) {
+        bestStreakRef.current = streak
+        setBestStreak(streak)
+      }
+      ACHIEVEMENTS.filter((a) => a.category === "streak" && streak >= a.threshold).forEach(awardIfNew)
+    },
+    [awardIfNew, setBestStreak],
+  )
+
+  // Task milestones (10/50/100): bump the lifetime counter and award thresholds.
+  const checkTaskMilestones = useCallback(() => {
+    const total = totalTasksRef.current + 1
+    totalTasksRef.current = total
+    setTotalTasksDone(total)
+    ACHIEVEMENTS.filter((a) => a.category === "tasks" && total >= a.threshold).forEach(awardIfNew)
+  }, [awardIfNew, setTotalTasksDone])
+
+  // Seed once per device when the achievements key is absent: credit streaks/tasks
+  // the user already completed so the badge gallery is accurate (no popup storm —
+  // the celebration is reserved for live progress). Depends on tasks/habits so a
+  // freshly-linked phone picks up the laptop's history once LAN sync delivers it.
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("proflow-achievements") !== null) return
+      const maxStreak = habits.reduce((m, h) => Math.max(m, h.streak), 0)
+      const tasksDone = tasks.filter((t) => t.status === "done" && t.completedAt).length
+      if (maxStreak > 0) {
+        bestStreakRef.current = maxStreak
+        setBestStreak(maxStreak)
+      }
+      if (tasksDone > 0) {
+        totalTasksRef.current = tasksDone
+        setTotalTasksDone(tasksDone)
+      }
+      const seeded: Record<string, string> = {}
+      ACHIEVEMENTS.forEach((a) => {
+        const v = a.category === "streak" ? maxStreak : tasksDone
+        if (v >= a.threshold) seeded[a.id] = todayKey()
+      })
+      if (Object.keys(seeded).length) setAchievements(seeded)
+    } catch {
+      // storage unavailable — nothing to seed
+    }
+  }, [tasks, habits, setBestStreak, setTotalTasksDone, setAchievements])
+
+  const buyShield = useCallback(() => {
+    if (shieldsRef.current >= MAX_SHIELDS || xpRef.current < SHIELD_PRICE) return false
+    xpRef.current -= SHIELD_PRICE
+    setXp(xpRef.current)
+    shieldsRef.current += 1
+    setStreakShields(shieldsRef.current)
+    return true
+  }, [setXp, setStreakShields])
+
   // Projects derived from real task data — no hardcoded demo projects. A task
   // can carry any project name; the sidebar/tasks view only ever shows projects
   // the user has actually used.
@@ -370,6 +579,82 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const setFocusLog = wrapSetter<FocusLogEntry[]>("focusLog", setRawFocusLog)
   const setUserName = wrapSetter<string>("userName", setRawUserName)
   const [avatarUrl, setAvatarUrl] = useLocalStorage("avatarUrl", "")
+
+  // Day rollover for streaks: a scheduled habit day that passes without being
+  // completed normally resets the streak — a shield (if held) absorbs the miss.
+  // Uses the version-bumping setHabits so the corrected streaks sync to the phone.
+  const runHabitDayCheck = useCallback(() => {
+    const today = todayKey()
+    if (!lastHabitCheck) {
+      setLastHabitCheck(today)
+      return
+    }
+    if (lastHabitCheck === today) return
+    // Ref guard: two invocations within the same render frame (mount +
+    // visibilitychange) would both see the stale closure value and double-consume
+    // shields — bail if this day was already processed.
+    if (habitCheckRef.current === today) return
+    habitCheckRef.current = today
+    // Fully elapsed days since the last check: lastHabitCheck … yesterday.
+    const gapDays: Date[] = []
+    const cursor = new Date(`${lastHabitCheck}T00:00:00`)
+    const now = new Date()
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    while (cursor < todayMidnight) {
+      gapDays.push(new Date(cursor))
+      cursor.setDate(cursor.getDate() + 1)
+    }
+    if (gapDays.length === 0) {
+      setLastHabitCheck(today)
+      return
+    }
+    let shieldsLeft = shieldsRef.current
+    let used = 0
+    const next = habits.map((h) => {
+      const base = { ...h, doneToday: false }
+      if (h.streak <= 0) return base
+      let missed = 0
+      gapDays.forEach((d, i) => {
+        // week[] is Monday-first (M,T,W,T,F,S,S) but getDay() is Sunday-first
+        // (0=Sun…6=Sat) — shift so both index 0 = Monday.
+        if (!h.week[(d.getDay() + 6) % 7]) return // habit not scheduled that weekday
+        // The last active day is credited if the user had marked it done.
+        if (i === 0) {
+          if (!h.doneToday) missed++
+        } else {
+          missed++
+        }
+      })
+      if (missed === 0) return base
+      const absorbed = Math.min(missed, shieldsLeft)
+      shieldsLeft -= absorbed
+      used += absorbed
+      // Not enough shields to cover every missed day → the streak breaks.
+      return absorbed < missed ? { ...base, streak: 0 } : base
+    })
+    if (used > 0) {
+      shieldsRef.current = shieldsLeft
+      setStreakShields(shieldsLeft)
+      showNotification("ProFlow", `🛡️ ${used} shield${used > 1 ? "s" : ""} used to keep your streak${used > 1 ? "s" : ""} alive!`)
+      celebrate()
+    }
+    setHabits(next)
+    setLastHabitCheck(today)
+  }, [lastHabitCheck, shieldsRef, habits, setHabits, setStreakShields, setLastHabitCheck])
+
+  // Check on mount, every minute, and when the tab regains focus — so a streak
+  // that would break overnight is caught (and shield-protected) as soon as the
+  // app is next opened or the day rolls over while it stays open.
+  useEffect(() => {
+    runHabitDayCheck()
+    const id = setInterval(runHabitDayCheck, 60_000)
+    const onVis = () => runHabitDayCheck()
+    document.addEventListener("visibilitychange", onVis)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener("visibilitychange", onVis)
+    }
+  }, [runHabitDayCheck])
 
   // theme + preferences (persisted, applied live)
   const [theme, setTheme] = useLocalStorage("settings-theme", "Purple")
@@ -857,6 +1142,17 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setRawFocusLog([])
     setXp(0)
     xpRef.current = 0
+    setStreakShields(0)
+    setLastHabitCheck("")
+    shieldMilestoneRef.current = 0
+    setLastShieldMilestone(0)
+    setAchievements({})
+    achievementsRef.current = {}
+    setBestStreak(0)
+    bestStreakRef.current = 0
+    setTotalTasksDone(0)
+    totalTasksRef.current = 0
+    setPendingBadges([])
     setRawUserName("You")
     setAvatarUrl("")
     setTheme("Purple")
@@ -884,6 +1180,13 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setRawNotifications,
     setRawFocusLog,
     setXp,
+    setStreakShields,
+    setLastHabitCheck,
+    setLastShieldMilestone,
+    setAchievements,
+    setBestStreak,
+    setTotalTasksDone,
+    setPendingBadges,
     setRawUserName,
     setAvatarUrl,
     setTheme,
@@ -941,6 +1244,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       if (t && t.status !== "done" && next === "done") {
         addXp(10)
         celebrate()
+        if (!t.completedAt) checkTaskMilestones() // first-time completion counts toward 10/50/100
       }
       setTasks((prev) =>
         prev.map((x) =>
@@ -955,7 +1259,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
         ),
       )
     },
-    [tasks, addXp],
+    [tasks, addXp, checkTaskMilestones],
   )
 
   const setTaskStatus = useCallback(
@@ -964,6 +1268,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       if (t && t.status !== "done" && status === "done") {
         addXp(10)
         celebrate()
+        if (!t.completedAt) checkTaskMilestones()
       }
       setTasks((prev) =>
         prev.map((x) =>
@@ -978,7 +1283,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
         ),
       )
     },
-    [tasks, addXp],
+    [tasks, addXp, checkTaskMilestones],
   )
 
   const toggleHabit = useCallback(
@@ -996,8 +1301,10 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
             : x,
         ),
       )
+      // Milestone: a habit just crossed 3/7/14 days.
+      if (h && !h.doneToday) checkStreakMilestones(h.streak + 1)
     },
-    [habits, addXp],
+    [habits, addXp, checkStreakMilestones],
   )
 
   const addHabit = useCallback<Store["addHabit"]>((name, week) => {
@@ -1145,6 +1452,13 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       recordFocusSession,
       xp,
       addXp,
+      streakShields,
+      buyShield,
+      achievements,
+      bestStreak,
+      totalTasksDone,
+      pendingBadges,
+      dismissBadge,
       setFocusMinutes,
       setBreakMinutes,
       startTimer,
@@ -1164,6 +1478,8 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       enableLan, disableLan, regenLanPasscode, submitLanPasscode, disconnectPhone, openLanGate, closeLanGate,
       secondsLeft, totalSeconds, running, mode, pomodoro, sessionLabel,
       focusMinutes, breakMinutes, focusLog, recordFocusSession, xp, addXp,
+      streakShields, buyShield,
+      achievements, bestStreak, totalTasksDone, pendingBadges, dismissBadge,
       setFocusMinutes, setBreakMinutes,
       startTimer, pauseTimer, toggleTimer, skipTimer, stopTimer, resetTimer,
     ],

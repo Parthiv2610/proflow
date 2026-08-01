@@ -1,9 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { Check, Flame, Plus, Target, Trash2 } from "lucide-react"
+import { Check, Flame, Plus, Shield, Target, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useStore } from "../store"
+import { FREE_SHIELD_EVERY_LEVELS, levelFor, MAX_SHIELDS, nextShieldMilestone, SHIELD_PRICE, useStore } from "../store"
 import { Card, CircularProgress, PageHeader, ProgressBar } from "../ui"
 import { Modal } from "../modal"
 import { Button } from "@/components/ui/button"
@@ -14,8 +14,37 @@ const inputCls =
   "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
 
 export function HabitsView() {
-  const { habits, goals, toggleHabit, addHabit, deleteHabit, addGoal, updateGoal, deleteGoal } = useStore()
+  const {
+    habits,
+    goals,
+    toggleHabit,
+    addHabit,
+    deleteHabit,
+    addGoal,
+    updateGoal,
+    deleteGoal,
+    xp,
+    streakShields,
+    buyShield,
+  } = useStore()
   const doneToday = habits.filter((h) => h.doneToday).length
+  const [justBought, setJustBought] = useState(false)
+  const [notEnough, setNotEnough] = useState(false)
+
+  // Next free shield lands at the next multiple of FREE_SHIELD_EVERY_LEVELS.
+  const nextFreeShieldLevel = nextShieldMilestone(levelFor(xp))
+
+  const handleBuy = () => {
+    if (buyShield()) {
+      setJustBought(true)
+      setNotEnough(false)
+      setTimeout(() => setJustBought(false), 2500)
+    } else {
+      setJustBought(false)
+      setNotEnough(true)
+      setTimeout(() => setNotEnough(false), 2500)
+    }
+  }
 
   // add-habit modal state
   const [habitOpen, setHabitOpen] = useState(false)
@@ -59,6 +88,53 @@ export function HabitsView() {
           </Button>
         </div>
       </PageHeader>
+
+      {/* Streak Shields — buy insurance with XP so a missed day doesn't reset your streak. */}
+      <Card className="flex flex-wrap items-center justify-between gap-4 border-focus/20 bg-focus/5 p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-focus/15 text-focus">
+            <Shield className="size-6" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">Streak Shields</p>
+            <p className="text-xs text-muted-foreground">
+              Miss a scheduled day and a shield keeps your streak alive — automatically. You can hold up to{" "}
+              <span className="font-medium text-focus">{MAX_SHIELDS}</span> at once. Shields and XP are per-device.
+            </p>
+            <p className="mt-1 text-[11px] font-medium text-focus/80">
+              🎁 Free shield every {FREE_SHIELD_EVERY_LEVELS} levels — next at Level {nextFreeShieldLevel}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <p className="text-xs text-muted-foreground">Your XP</p>
+            <p className="text-sm font-bold tabular-nums">{xp}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-muted-foreground">Shields</p>
+            <p className="text-sm font-bold tabular-nums">
+              {streakShields}/{MAX_SHIELDS}
+            </p>
+          </div>
+          <Button variant="secondary" onClick={handleBuy} disabled={streakShields >= MAX_SHIELDS}>
+            <Shield className="size-4" />
+            {streakShields >= MAX_SHIELDS ? "Max held" : `Buy · ${SHIELD_PRICE} XP`}
+          </Button>
+        </div>
+        <p
+          className={cn(
+            "w-full text-xs font-medium transition-opacity",
+            justBought ? "text-success" : notEnough ? "text-danger" : "opacity-0",
+          )}
+        >
+          {justBought
+            ? "Shield purchased — your streak is protected!"
+            : notEnough
+              ? `Not enough XP yet — you need ${SHIELD_PRICE} XP for a shield.`
+              : " "}
+        </p>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="flex flex-col gap-3">

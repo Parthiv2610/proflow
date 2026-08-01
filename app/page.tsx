@@ -8,6 +8,7 @@ import { CommandPalette } from "@/components/proflow/command-palette"
 import { CalendarView } from "@/components/proflow/views/calendar-view"
 import { Dashboard } from "@/components/proflow/views/dashboard"
 import { FocusView } from "@/components/proflow/views/focus-view"
+import { ProgressView } from "@/components/proflow/views/progress-view"
 import { HabitsView } from "@/components/proflow/views/habits-view"
 import { NotesView } from "@/components/proflow/views/notes-view"
 import { NotificationsView } from "@/components/proflow/views/notifications-view"
@@ -19,6 +20,7 @@ import { Topbar } from "@/components/proflow/topbar"
 import { BottomTabs } from "@/components/proflow/bottom-tabs"
 import { WelcomeTour } from "@/components/proflow/welcome-tour"
 import { UpdateBanner } from "@/components/proflow/update-banner"
+import { MilestonePopup } from "@/components/proflow/milestone-popup"
 
 function Workspace() {
   const { view, focusMode, toggleFocusMode, sidebarOpen, closeSidebar } = useStore()
@@ -96,6 +98,7 @@ function Workspace() {
             {view === "notes" && <NotesView />}
             {view === "habits" && <HabitsView />}
             {view === "focus" && <FocusView />}
+            {view === "progress" && <ProgressView />}
             {view === "notifications" && <NotificationsView />}
             {view === "settings" && <SettingsView />}
           </AnimatedView>
@@ -117,6 +120,8 @@ function Workspace() {
       <CommandPalette open={paletteOpen} onClose={closePalette} onCapture={handleCapture} />
       <WelcomeTour />
       <LanPasscodeGate />
+      {/* Confetti + badge popup when an achievement milestone is crossed */}
+      <MilestonePopup />
     </div>
   )
 }

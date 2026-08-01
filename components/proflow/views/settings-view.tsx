@@ -20,7 +20,7 @@ import { cn, timeAgo } from "@/lib/utils"
 import { getStoredLaptopUrl } from "@/lib/lan-sync"
 import { useUpdate } from "@/lib/use-update"
 import { Card, PageHeader } from "../ui"
-import { useStore, ACCENTS } from "../store"
+import { useStore, ACCENTS, ACHIEVEMENTS } from "../store"
 
 function Switch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
@@ -46,7 +46,21 @@ function Switch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 }
 
 export function SettingsView() {
-  const { userName, setUserName, avatarUrl, setAvatarUrl, theme, setTheme, prefs, togglePref, startTour, resetAllData } = useStore()
+  const {
+    userName,
+    setUserName,
+    avatarUrl,
+    setAvatarUrl,
+    theme,
+    setTheme,
+    prefs,
+    togglePref,
+    startTour,
+    resetAllData,
+    achievements,
+    bestStreak,
+    totalTasksDone,
+  } = useStore()
   const [confirmReset, setConfirmReset] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -170,6 +184,53 @@ export function SettingsView() {
               </div>
             ))}
           </div>
+        </Card>
+
+        {/* Achievement badges — permanent gallery of earned milestones */}
+        <Card>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Badges</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Milestones you&apos;ve crossed — streaks and tasks. They never expire.
+              </p>
+            </div>
+            <span className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+              {Object.keys(achievements).length}/{ACHIEVEMENTS.length} earned
+            </span>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {ACHIEVEMENTS.map((a) => {
+              const earnedDate = achievements[a.id]
+              const earned = !!earnedDate
+              return (
+                <div
+                  key={a.id}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-all duration-200",
+                    earned
+                      ? "border-focus/30 bg-focus/5 hover:-translate-y-0.5 hover:shadow-md"
+                      : "border-border bg-secondary/20 opacity-60",
+                  )}
+                >
+                  <span className={cn("text-2xl", !earned && "grayscale opacity-50")}>
+                    {a.icon}
+                  </span>
+                  <p className="text-sm font-semibold text-foreground">{a.name}</p>
+                  <p className="text-xs text-muted-foreground">{a.desc}</p>
+                  <p className={cn("text-[10px] font-medium", earned ? "text-focus" : "text-muted-foreground")}>
+                    {earned
+                      ? `Earned ${new Date(earnedDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+                      : "Locked"}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Best streak: <span className="font-medium text-foreground">{bestStreak} days</span> · Tasks completed:{" "}
+            <span className="font-medium text-foreground">{totalTasksDone}</span>
+          </p>
         </Card>
       </div>
 

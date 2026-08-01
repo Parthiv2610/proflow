@@ -8,10 +8,12 @@ import {
   Flame,
   Gauge,
   LayoutDashboard,
+  Shield,
   SquareCheckBig,
   Target,
   TrendingUp,
   TriangleAlert,
+  Zap,
 } from "lucide-react"
 import { cn, timeAgo } from "@/lib/utils"
 import { DragSortContainer, DragSortItem } from "../drag-sort"
@@ -19,7 +21,7 @@ import { FocusChart } from "../focus-chart"
 import { EncouragementCard } from "../encouragement"
 import { WeeklyWrap } from "../weekly-wrap"
 import { TaskRow } from "../task-row"
-import { useStore, type EventItem, type View } from "../store"
+import { useStore, MAX_SHIELDS, type EventItem, type View } from "../store"
 import { Card, CircularProgress, ProgressBar } from "../ui"
 
 function greeting() {
@@ -48,6 +50,15 @@ function formatTimeShort(h: number, m: number) {
   return `${h12}:${String(m).padStart(2, "0")} ${ampm}`
 }
 
+function momentumLabel(score: number) {
+  if (score >= 100) return "On fire! 🔥"
+  if (score >= 75) return "On a roll"
+  if (score >= 50) return "In the flow"
+  if (score >= 25) return "Getting going"
+  if (score > 0) return "Warming up"
+  return "Ready to start"
+}
+
 const tabs = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "focus", label: "Focus & Habits", icon: Flame },
@@ -74,7 +85,7 @@ export function Dashboard() {
       hour12: true,
     })
   }
-  const { tasks, habits, goals, events, notes, setView, cycleTaskStatus, deleteTask, reorderTasks, toggleHabit, userName, lanInfo, lanAuthed, lanOnline, lastSyncedAt, focusLog } = useStore()
+  const { tasks, habits, goals, events, notes, setView, cycleTaskStatus, deleteTask, reorderTasks, toggleHabit, userName, lanInfo, lanAuthed, lanOnline, lastSyncedAt, focusLog, streakShields } = useStore()
 
   const syncIndicator = useMemo(() => {
     const active =
@@ -99,6 +110,36 @@ export function Dashboard() {
   )
   const habitsToday = habits.filter((h) => h.doneToday).length
   const goalAvg = goals.length ? Math.round(goals.reduce((s, g) => s + g.progress, 0) / goals.length) : 0
+
+  // Momentum meter — today's completions as a 0-100 energy bar, weighted exactly
+  // like the XP economy (task +10, habit +5, focus session +25) so it doubles as
+  // "today's XP in percentage form". Computed inline (not memoized): the live
+  // clock below re-renders every second anyway, and that keeps it accurate the
+  // moment the day rolls over, even if the app has been open past midnight.
+  const tasksToday = tasks.filter((t) => t.status === "done" && t.completedAt === todayStr()).length
+  const focusToday = focusLog.find((e) => e.date === todayStr())?.sessions ?? 0
+  const momentumScore = Math.min(100, tasksToday * 10 + habitsToday * 5 + focusToday * 25)
+
+  // 7-day Momentum strip — per-day scores for the last week. Past days use the
+  // date-stamped sources (task completions + focus sessions); habit check-ins
+  // are only stored for today, so today's bar also includes them to match the
+  // meter above.
+  const weekMomentum = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (6 - i))
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    const done = tasks.filter((t) => t.status === "done" && t.completedAt === key).length
+    const sess = focusLog.find((e) => e.date === key)?.sessions ?? 0
+    let score = done * 10 + sess * 25
+    if (i === 6) score += habitsToday * 5
+    return {
+      key,
+      score,
+      isToday: i === 6,
+      label: d.toLocaleDateString("en-US", { weekday: "narrow" }),
+    }
+  })
+  const weekMax = Math.max(100, ...weekMomentum.map((d) => d.score))
   const onTrack = goals.filter((g) => g.status === "on-track").length
   const atRisk = goals.filter((g) => g.status === "at-risk").length
 
@@ -161,6 +202,77 @@ export function Dashboard() {
         <>
           <EncouragementCard />
 
+          {/* Momentum meter — a little energy bar that fills as you get things done today */}
+          <div className="animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-both" style={{ animationDelay: "50ms" }}>
+            <Card className="relative overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
+              <div className="flex flex-wrap items-center gap-4">
+                <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                  <Zap className="size-6" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Momentum</p>
+                    <span className="text-sm font-bold text-primary">{momentumLabel(momentumScore)}</span>
+                  </div>
+                  <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{
+                        width: `${momentumScore}%`,
+                        background: "linear-gradient(90deg, var(--primary), var(--focus), var(--success))",
+                      }}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {tasksToday} task{tasksToday === 1 ? "" : "s"} · {habitsToday} habit{habitsToday === 1 ? "" : "s"} ·{" "}
+                    {focusToday} focus session{focusToday === 1 ? "" : "s"} today
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-bold tracking-tight tabular-nums">{momentumScore}%</p>
+                  <p className="text-xs text-muted-foreground">of daily momentum</p>
+                </div>
+              </div>
+
+              {/* 7-day momentum strip — your energy trend week over week */}
+              <div className="mt-4 border-t border-border/50 pt-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">7-day trend</p>
+                  <p className="text-[10px] text-muted-foreground">tasks + focus · habits today only</p>
+                </div>
+                <div className="mt-2 flex items-end gap-1.5">
+                  {weekMomentum.map((d) => (
+                    <div key={d.key} className="flex flex-1 flex-col items-center gap-1">
+                      <div className="flex h-9 w-full items-end">
+                        <div
+                          title={`${d.key}: ${d.score}%`}
+                          className={cn(
+                            "w-full rounded-md transition-all duration-500",
+                            d.score > 0 ? "bg-focus/50" : "bg-muted/60",
+                          )}
+                          style={{
+                            height: `${Math.max(d.score > 0 ? 8 : 3, Math.round((d.score / weekMax) * 36))}px`,
+                            ...(d.isToday
+                              ? { background: "linear-gradient(to top, var(--primary), var(--focus))" }
+                              : {}),
+                          }}
+                        />
+                      </div>
+                      <span
+                        className={cn(
+                          "text-[10px]",
+                          d.isToday ? "font-semibold text-foreground" : "text-muted-foreground",
+                        )}
+                      >
+                        {d.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {/* Today's Completion */}
             <div className="animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-both" style={{ animationDelay: "0ms" }}>
@@ -205,9 +317,20 @@ export function Dashboard() {
                 <span className="text-5xl font-bold tracking-tight">{Math.max(...habits.map((h) => h.streak), 0)}</span>
                 <span className="mb-1.5 text-sm text-muted-foreground">days</span>
               </div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Best: {Math.max(...habits.map((h) => h.streak), 0)} days · {habitsToday}/{habits.length} habits today
-              </p>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-muted-foreground">
+                  Best: {Math.max(...habits.map((h) => h.streak), 0)} days · {habitsToday}/{habits.length} habits today
+                </p>
+                <span
+                  className="flex items-center gap-1.5 rounded-lg bg-focus/10 px-2 py-1 text-focus"
+                  title={`Streak shields: keeps your streak alive if you miss a scheduled day. Buy more in Habits & Goals.`}
+                >
+                  <Shield className="size-3.5" />
+                  <span className="text-xs font-semibold tabular-nums">
+                    {streakShields}/{MAX_SHIELDS}
+                  </span>
+                </span>
+              </div>
               <div className="mt-4 flex items-center justify-between gap-1">
                 {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
                   <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
