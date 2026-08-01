@@ -29,9 +29,13 @@ public class UpdaterPlugin extends Plugin {
   @PluginMethod
   public void getAppInfo(PluginCall call) {
     try {
+      // Read from PackageManager, not BuildConfig: AGP 8+ disables BuildConfig
+      // generation by default, so referencing it would fail to compile.
+      android.content.pm.PackageInfo info =
+          getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0);
       JSObject ret = new JSObject();
-      ret.put("versionName", BuildConfig.VERSION_NAME);
-      ret.put("versionCode", BuildConfig.VERSION_CODE);
+      ret.put("versionName", info.versionName);
+      ret.put("versionCode", info.getLongVersionCode());
       call.resolve(ret);
     } catch (Exception e) {
       call.reject("Failed to read app version", e);
