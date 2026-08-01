@@ -106,6 +106,14 @@ You could just use only the laptop app or phone app separately
 
 ## 📸 Screenshots
 
+<img width="960" height="600" alt="Screenshot 2026-08-02 004747" src="https://github.com/user-attachments/assets/73bf1b3b-4067-437b-a469-aeb6e8c4ee44" />
+<img width="960" height="600" alt="Screenshot 2026-08-02 004836" src="https://github.com/user-attachments/assets/31f82ae0-4880-4025-9928-835a7f551e67" />
+<img width="960" height="600" alt="Screenshot 2026-08-02 004859" src="https://github.com/user-attachments/assets/01a1c4fb-534a-43a6-ad50-691f541d5e1d" />
+<img width="960" height="600" alt="Screenshot 2026-08-02 004914" src="https://github.com/user-attachments/assets/02d34eb3-9ecc-4f7c-a54f-0de5db0f1560" />
+<img width="960" height="600" alt="Screenshot 2026-08-02 004925" src="https://github.com/user-attachments/assets/abdd8ec3-69e7-4e85-a0bc-c8d92a10aadf" />
+<img width="960" height="600" alt="image" src="https://github.com/user-attachments/assets/1d765d12-15fe-4ffe-a6ae-1d59acb51c68" />
+
+
 
 ---
 
