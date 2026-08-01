@@ -48,32 +48,7 @@ your machine and works fully offline.
 
 That's it — no account, no setup, no internet required.
 
-### 2️⃣ Laptop + Phone (LAN Sync)
-
-Use the same app on your phone, with changes syncing **both ways** — no account,
-no internet, just both devices on the **same Wi-Fi**.
-
-**On your laptop (once):**
-
-1. Open ProFlow → **Settings → LAN Sync**
-2. Turn on **"Allow your phone to use this app"**
-3. If Windows Firewall asks, click **Allow**
-4. The card shows a **QR code** and an address like `http://192.168.x.x:5174`
-
-**On your phone:**
-
-1. Connect the phone to the **same Wi-Fi** as the laptop
-2. Scan the QR code with your phone's camera — or type the address in the browser
-3. Enter the 6-digit passcode shown on the laptop (only the first time)
-4. Done — the phone shows the same tasks, habits, goals, events, and notes
-
-**To make it feel like a real app on your phone:**
-
-- **iPhone:** Safari → Share → **Add to Home Screen**
-- **Android:** Chrome → ⋮ menu → **Add to Home screen**
-- **Or install the Android APK** (below) for a true native app that links to your laptop
-
-### 📱 Android APK (native app)
+### 2️⃣ 📱 Android APK (native app)
 
 A **ProFlow APK** (`app-release.apk`, properly signed) is built automatically by GitHub
 Actions on every `v*` release tag and attached to the release page — grab it from
@@ -92,14 +67,13 @@ Actions on every `v*` release tag and attached to the release page — grab it f
 3. In the APK: **Settings → LAN Sync** → type that address → **Connect**
 4. Enter the 6-digit passcode from the laptop screen — done!
 
-The APK syncs both ways, exactly like the phone-browser flow — no account, no internet,
+The APK syncs both ways, no account, no internet,
 just the same Wi-Fi. Not connected yet? It shows "Not connected" and a hint instead of a
 confusing passcode prompt.
 
-> 🛠️ **Build it yourself:** run `pnpm exec cap sync android && cd android && ./gradlew assembleRelease`
-> after a `next build` to produce the signed APK locally (the signing keystore lives in
-> `android/app/proflow-release.keystore` with `keystore.properties`).
->
+You could just use only the laptop app or phone app seperately
+
+
 > 🔐 **Signing note:** the keystore and its password are committed for convenience so the
 > CI build works out of the box. The workflow already honors the `ANDROID_KEYSTORE_PASSWORD`
 > and `ANDROID_KEY_PASSWORD` GitHub secrets — to harden a public release, set those secrets,
@@ -139,8 +113,6 @@ pnpm install
 # Start the Next.js dev server
 pnpm dev
 ```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser to see the web version.
 
 ### Run the Electron desktop app
 
