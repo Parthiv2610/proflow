@@ -10,7 +10,7 @@ echo file submission portal in your default browser.
 echo.
 echo After the page loads:
 echo   1. Sign in with your Microsoft account
-echo   2. Upload: release\ProFlow-Setup-2.0.0.exe
+echo   2. Upload: release\ProFlow-Setup-2.1.0.exe
 echo   3. Mark it as "Clean file"
 echo   4. Paste the details from SMARTSCREEN_SUBMISSION.md
 echo.

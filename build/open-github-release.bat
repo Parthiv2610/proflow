@@ -6,7 +6,7 @@ echo   ProFlow — Create GitHub Release
 echo ============================================
 echo.
 
-set INSTALLER=..\release\ProFlow-Setup-2.0.0.exe
+set INSTALLER=..\release\ProFlow-Setup-2.1.0.exe
 
 if not exist "%INSTALLER%" (
     echo [ERROR] Installer not found at %INSTALLER%
@@ -30,8 +30,8 @@ echo   ✓ SHA-256 hash computed above
 echo ============================================
 echo.
 echo Next steps:
-echo   1. Tag: v2.0.0
-echo   2. Title: ProFlow v2.0.0
+echo   1. Tag: v2.1.0
+echo   2. Title: ProFlow v2.1.0
 echo   3. Paste release notes from RELEASE_GUIDE.md
 echo   4. Drag the .exe file into Attach Binaries
 echo   5. Click Publish Release

@@ -7,7 +7,7 @@ echo   Tests install, shortcuts, registry, and uninstall
 echo ============================================
 echo.
 
-set SETUP_PATH=%~dp0..\release\ProFlow-Setup-2.0.0.exe
+set SETUP_PATH=%~dp0..\release\ProFlow-Setup-2.1.0.exe
 set INSTALL_DIR=%ProgramFiles%\ProFlow
 set UNINSTALL_PATH=%ProgramFiles%\ProFlow\Uninstall.exe
 set PASS=0

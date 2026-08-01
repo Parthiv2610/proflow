@@ -1,4 +1,4 @@
-# 🚀 ProFlow v2.0.0 — GitHub Release Guide
+# 🚀 ProFlow v2.1.0 — GitHub Release Guide
 
 This guide walks you through creating a GitHub Release with the signed installer.
 
@@ -6,7 +6,7 @@ This guide walks you through creating a GitHub Release with the signed installer
 >
 > The repo now has a GitHub Actions workflow (`.github/workflows/release-installer.yml`)
 > that **automatically builds the installer from a fresh checkout** every time you push a
-> `v*` tag (e.g. `v2.0.0`), then attaches `ProFlow-Setup-*.exe` to the release.
+> `v*` tag (e.g. `v2.1.0`), then attaches `ProFlow-Setup-*.exe` to the release.
 >
 > It rebuilds `next build` (static export) + `electron-builder` from source on a clean
 > Windows runner, so **the stale-build blank-screen bug can never happen again** — and it
@@ -29,8 +29,8 @@ This guide walks you through creating a GitHub Release with the signed installer
 
 | Field | Value |
 |-------|-------|
-| **Tag version** | `v2.0.0` |
-| **Release title** | `ProFlow v2.0.0 — Animations, Calendar Drag-Drop, Color Picker & More` |
+| **Tag version** | `v2.1.0` |
+| **Release title** | `ProFlow v2.1.0 — Settings Toggles, Mobile Sidebar & Tab Bar, Android APK` |
 | **Target branch** | `main` |
 
 ---

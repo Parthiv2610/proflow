@@ -42,7 +42,7 @@ There are two ways to use ProFlow — pick whichever fits you.
 Just install and use the app on your computer. Everything is saved locally on
 your machine and works fully offline.
 
-1. Download and run `ProFlow-Setup-2.0.0.exe` from the latest release
+1. Download and run `ProFlow-Setup-2.1.0.exe` from the latest release
 2. Click through the installer — it installs to `C:\Program Files\ProFlow`
 3. Open ProFlow and start adding tasks, habits, goals, events, and notes
 
@@ -259,7 +259,7 @@ powershell -File build\sign-installer.ps1
 To stop SmartScreen warnings when users download the installer:
 
 1. Go to [Microsoft Security Intelligence File Submission](https://www.microsoft.com/en-us/wdsi/filesubmission)
-2. Upload the signed `ProFlow-Setup-2.0.0.exe`
+2. Upload the signed `ProFlow-Setup-2.1.0.exe`
 3. Mark it as "Clean file"
 4. Submit and wait 24–48 hours for review
 
