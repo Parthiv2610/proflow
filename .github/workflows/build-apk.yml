@@ -98,6 +98,15 @@ jobs:
       - name: Sync web assets into the Android project
         run: pnpm exec cap sync android
 
+      # Capacitor 8's Android build targets Java 21, but the ubuntu-latest runner
+      # ships JDK 17 by default — install JDK 21 explicitly or Gradle fails with
+      # 'invalid source release: 21'.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
       # Signed release APK — keystore.properties is committed for convenience,
       # but the workflow also honors ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_PASSWORD
       # secrets so the signing password can be kept out of the repo entirely.
