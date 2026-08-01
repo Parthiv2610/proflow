@@ -53,7 +53,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "ProFlow"
+      "shortcutName": "ProFlow",
+      "artifactName": "ProFlow-Setup-${version}.exe"
     }
   },
   "dependencies": {

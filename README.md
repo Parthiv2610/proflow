@@ -160,9 +160,9 @@ build.bat
 # Or manually step by step:
 pnpm build                                    # Build the Next.js static export
 # Then run makensis.exe (path varies by installation):
-"C:\Program Files (x86)\NSIS\makensis.exe" build\installer.nsi
+"C:\Program Files (x86)\NSIS\makensis.exe" build\installer-manual.nsi
 # Or use the electron-builder path:
-"%LOCALAPPDATA%\electron-builder\Cache\nsis\nsis-3.0.4.1\makensis.exe" build\installer.nsi
+"%LOCALAPPDATA%\electron-builder\Cache\nsis\nsis-3.0.4.1\makensis.exe" build\installer-manual.nsi
 ```
 
 ---
@@ -189,7 +189,7 @@ pro-flow/
 │   └── lan-sync.ts           # Renderer-side LAN sync (phone polling, detection)
 ├── public/                   # Static assets
 ├── build/                    # Build scripts & installer config
-│   ├── installer.nsi         # NSIS installer script
+│   ├── installer-manual.nsi  # NSIS installer script (manual route)
 │   ├── icon.ico              # Windows app icon
 │   ├── create-cert.ps1       # Self-signed cert generator
 │   ├── sign-installer.ps1    # Code signing script

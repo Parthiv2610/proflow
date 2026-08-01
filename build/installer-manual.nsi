@@ -1,4 +1,9 @@
-; ProFlow Installer
+; ProFlow Installer (MANUAL route — run makensis.exe on this file directly)
+; NOTE: electron-builder auto-detects build/installer.nsi and uses it as a custom
+; script. If you want electron-builder's default template, keep this file named
+; installer-manual.nsi (as it is now) so it is NOT auto-detected.
+; Update the File /r source below to a freshly built portable app (e.g. from
+; `electron-packager` or the current release/win-unpacked) before running.
 !define PRODUCT_NAME "ProFlow"
 !define PRODUCT_VERSION "2.0.0"
 !define PRODUCT_PUBLISHER "ProFlow"
