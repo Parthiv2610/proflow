@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Modal } from "./modal"
 import { useStore, type Priority } from "./store"
@@ -11,10 +11,18 @@ const categories = ["Design", "Engineering", "Planning", "Admin", "Meetings"]
 export function CaptureDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { projects, addTask } = useStore()
   const [title, setTitle] = useState("")
-  const [project, setProject] = useState(projects[0])
+  const [project, setProject] = useState(projects[0] ?? "General")
   const [category, setCategory] = useState(categories[0])
   const [priority, setPriority] = useState<Priority>("medium")
   const [due, setDue] = useState("Today")
+
+  // The dialog stays mounted (page.tsx always renders it) — re-sync the
+  // default project every time it opens so it reflects projects created since.
+  // The guard never overwrites a value the user is currently typing (e.g. a
+  // LAN-sync push could add projects while the dialog is open).
+  useEffect(() => {
+    if (open) setProject((prev) => (projects.includes(prev) ? prev : projects[0] ?? "General"))
+  }, [open, projects])
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -45,15 +53,24 @@ export function CaptureDialog({ open, onClose }: { open: boolean; onClose: () =>
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Project">
-            <select
-              value={project}
-              onChange={(e) => setProject(e.target.value)}
-              className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
-            >
-              {projects.map((p) => (
-                <option key={p}>{p}</option>
-              ))}
-            </select>
+            {projects.length > 0 ? (
+              <select
+                value={project}
+                onChange={(e) => setProject(e.target.value)}
+                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+              >
+                {projects.map((p) => (
+                  <option key={p}>{p}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={project}
+                onChange={(e) => setProject(e.target.value)}
+                placeholder="e.g. Personal, Work"
+                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+              />
+            )}
           </Field>
           <Field label="Category">
             <select

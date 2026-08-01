@@ -27,13 +27,29 @@ import {
 import { cn } from "@/lib/utils"
 import { useStore, type View } from "./store"
 
+type NavAction = {
+  kind: "navigate"
+  view: View
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  shortcut?: string
+}
+
 type PaletteAction =
-  | { kind: "navigate"; view: View; label: string; icon: React.ComponentType<{ className?: string }>; shortcut?: string }
+  | NavAction
   | { kind: "task"; id: string; title: string; project: string }
   | { kind: "note"; id: string; title: string; tag: string }
-  | { kind: "action"; id: string; label: string; icon: React.ComponentType<{ className?: string }>; onPick: () => void }
+  | QuickAction
 
-const navActions: PaletteAction[] = [
+type QuickAction = {
+  kind: "action"
+  id: string
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  onPick: () => void
+}
+
+const navActions: NavAction[] = [
   { kind: "navigate", view: "dashboard", label: "Dashboard", icon: LayoutDashboard, shortcut: "⌘1" },
   { kind: "navigate", view: "tasks", label: "Tasks & Projects", icon: ListTodo, shortcut: "⌘2" },
   { kind: "navigate", view: "calendar", label: "Calendar", icon: Calendar, shortcut: "⌘3" },
@@ -75,7 +91,7 @@ export function CommandPalette({
     const items: PaletteAction[] = []
 
     // 1. Quick actions (always show at top when empty, filtered when typing)
-    const actions: PaletteAction[] = [
+    const actions: QuickAction[] = [
       {
         kind: "action",
         id: "toggle-focus",

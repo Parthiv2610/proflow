@@ -257,6 +257,12 @@ function LanSyncCard() {
   const [laptopUrl, setLaptopUrl] = useState(getStoredLaptopUrl())
   const [connectState, setConnectState] = useState<"idle" | "busy" | "error">("idle")
   const [connectError, setConnectError] = useState<string | null>(null)
+  const [selfTest, setSelfTest] = useState<"idle" | "busy" | "done">("idle")
+  const [selfTestResult, setSelfTestResult] = useState<{
+    reachable: boolean
+    reason?: string
+    testedIp?: string | null
+  } | null>(null)
 
   const copy = (text: string) => {
     navigator.clipboard?.writeText(text).then(
@@ -426,6 +432,17 @@ function LanSyncCard() {
 
   // ── Laptop view (desktop app — hosts the server) ──
   const enabled = !!lanInfo?.enabled
+
+  const runSelfTest = async () => {
+    const api = (window as any).electronAPI
+    if (!api?.lanSelfTest) return
+    setSelfTest("busy")
+    setSelfTestResult(null)
+    const result = await api.lanSelfTest()
+    setSelfTestResult(result)
+    setSelfTest("done")
+  }
+
   return (
     <div className="mt-4 space-y-3">
       <div className="flex items-center justify-between gap-4">
@@ -470,8 +487,62 @@ function LanSyncCard() {
                   <span className="font-medium text-foreground">Allow</span>. On networks with several ProFlow
                   laptops, each shows its own QR — scan the one on this screen.
                 </p>
+                {(lanInfo?.ips?.length || 0) > 1 && (
+                  <div className="mt-3">
+                    <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                      Other addresses on this computer
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {(lanInfo?.ips || []).map((ip, i) => (
+                        <button
+                          key={ip}
+                          type="button"
+                          onClick={() => copy(`http://${ip}:${lanInfo?.port || 5174}`)}
+                          title="Copy this address"
+                          className="flex items-center gap-1 rounded-md border border-border bg-secondary/40 px-2 py-1 font-mono text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                          {i === 0 ? "Preferred: " : "Alt: "}
+                          {ip}
+                          <Copy className="size-3" />
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                      If your phone can&apos;t reach the first address, try another one — the laptop may have
+                      virtual network adapters (Docker, WSL, VMware) that look valid but aren&apos;t on your Wi-Fi.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
+          </div>
+
+          {/* Connection diagnostic — tells the user whether the server is reachable
+              on the laptop's own LAN address, and points at the firewall if not. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-secondary/20 p-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                Having trouble connecting?
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {selfTestResult && !selfTestResult.reachable && selfTestResult.reason === "firewall"
+                  ? "The server is running, but your phone couldn't reach it on a LAN address — Windows Firewall is the usual culprit. Try the other IP chips above first (a virtual adapter address would also fail here). If none work, allow ProFlow in the firewall, or restart it and click Allow when prompted."
+                  : selfTestResult && !selfTestResult.reachable
+                    ? "The server didn't answer on the LAN address. Turn it off and on again, or check that port " +
+                      (lanInfo?.port || 5174) +
+                      " is free."
+                    : "This checks whether your phone can actually reach this laptop over Wi-Fi, and shows a fix if the firewall is in the way."}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={runSelfTest}
+              disabled={selfTest === "busy"}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+            >
+              {selfTest === "busy" ? <Loader2 className="size-3.5 animate-spin" /> : <Wifi className="size-3.5" />}
+              Test connection
+            </button>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-secondary/20 p-3">

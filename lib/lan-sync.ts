@@ -23,6 +23,8 @@ export type LanInfo = {
   enabled: boolean
   url: string | null
   ip: string | null
+  /** All candidate LAN addresses, most-likely-reachable first. */
+  ips?: string[]
   port: number
   passcode: string | null
   host: string | null
@@ -143,6 +145,7 @@ export async function detectLan(): Promise<LanInfo | null> {
         enabled: !!status.enabled,
         url: status.url || null,
         ip: status.ip || null,
+        ips: Array.isArray(status.ips) ? status.ips : status.ip ? [status.ip] : [],
         port: status.port || 5174,
         passcode: status.passcode || null,
         host: status.host || null,

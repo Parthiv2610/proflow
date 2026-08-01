@@ -151,11 +151,13 @@ function persistLanMeta() {
 }
 
 function getLanStatus() {
-  const ip = getLanIPs()[0] || null
+  const ips = getLanIPs()
+  const ip = ips[0] || null
   return {
     enabled: !!lanServer,
     url: lanServer && ip ? `http://${ip}:${lanServer.port}` : null,
     ip,
+    ips, // all candidate addresses, best first — the UI can offer alternatives
     port: lanServer ? lanServer.port : 5174,
     passcode: lanMeta.passcode || "",
     host: os.hostname(),
@@ -332,6 +334,37 @@ ipcMain.handle("lan:regen-passcode", async () => {
   persistLanMeta()
   if (lanServer) lanServer.setPasscode(lanMeta.passcode)
   return getLanStatus()
+})
+
+// Diagnose why a phone can't connect: fetch /api/info over the laptop's own
+// LAN address. If localhost works but the LAN IP fails, the Windows Firewall
+// is almost certainly dropping inbound traffic on the sync port.
+ipcMain.handle("lan:self-test", async () => {
+  if (!lanServer) return { reachable: false, reason: "server-off" }
+  const port = lanServer.port
+  const ips = getLanIPs()
+  const probe = (host) =>
+    new Promise((resolve) => {
+      const req = http.get(`http://${host}:${port}/api/info`, { timeout: 3000 }, (res) => {
+        res.resume()
+        resolve(res.statusCode === 200)
+      })
+      req.on("error", () => resolve(false))
+      req.on("timeout", () => {
+        req.destroy()
+        resolve(false)
+      })
+    })
+  const local = await probe("127.0.0.1")
+  // Probe every LAN address in parallel — the diagnosis doesn't depend on
+  // order, and sequential 3s timeouts could hang the button for 10s+ when
+  // several virtual adapters are unroutable.
+  const results = await Promise.all(ips.map(async (ip) => ({ ip, ok: await probe(ip) })))
+  const ok = results.find((r) => r.ok)
+  const testedIp = ok ? ok.ip : null
+  if (!local) return { reachable: false, reason: "local-down", testedIp }
+  if (!ok) return { reachable: false, reason: "firewall", testedIp, ips }
+  return { reachable: true, testedIp, ips }
 })
 
 // ---------------------------------------------------------------------------

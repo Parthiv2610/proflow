@@ -42,18 +42,42 @@ const MIME = {
 
 const MAX_BODY = 10 * 1024 * 1024 // 10 MB state snapshots
 
-/** All non-internal IPv4 addresses of this machine (the WiFi IP first). */
+// Adapter names that are almost never the Wi-Fi/LAN a phone could reach:
+// virtual machines, containers, VPNs and tunnel adapters. Windows names
+// them e.g. "vEthernet (WSL)", "VMware Network Adapter VMnet8",
+// "Ethernet 2" (Tailscale), "TAP-Windows Adapter V9", etc.
+const VIRTUAL_ADAPTER = /vmware|virtualbox|vethernet|wsl|docker|hyper-v|tailscale|zerotier|hamachi|nord|openvpn|wireguard|tap-|tun-|vpn|bluetooth|loopback/i
+
+/**
+ * All plausible LAN IPv4 addresses of this machine, most-likely-reachable first.
+ * Filters out virtual/container/VPN adapters and sorts so a real Wi-Fi/LAN IP
+ * (192.168.x.x / 10.x.x.x / 172.16-31.x.x) comes before anything exotic — a
+ * laptop with Docker/WSL/VMware installed used to report a fake adapter IP as
+ * its first address, so the phone could never reach it.
+ */
 function getLanIPs() {
-  const out = []
   const nets = os.networkInterfaces()
+  const candidates = []
   for (const name of Object.keys(nets)) {
     for (const net of nets[name] || []) {
-      if (net.family === "IPv4" && !net.internal && !net.address.startsWith("169.254")) {
-        out.push(net.address)
-      }
+      if (net.family !== "IPv4" || net.internal) continue
+      if (net.address.startsWith("169.254")) continue // link-local, unroutable
+      candidates.push({ name, address: net.address })
     }
   }
-  return out
+  const isVirtual = (c) => VIRTUAL_ADAPTER.test(c.name)
+  const isPrivate = (c) =>
+    /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(c.address)
+  // Real private LAN IPs on physical adapters first, then private on any
+  // adapter, then everything else (public / unusual).
+  const score = (c) =>
+    (isVirtual(c) ? 8 : 0) + (!isPrivate(c) ? 4 : 0) + (c.address.startsWith("192.168.") ? -1 : 0)
+  candidates.sort((a, b) => score(a) - score(b))
+  // NOTE: os.networkInterfaces() also reports configured IPv4s of disconnected
+  // adapters, so the first entry is a best-guess, not a guarantee. The UI shows
+  // every candidate so the user can try an alternate address if the top one
+  // isn't on their real Wi-Fi.
+  return candidates.map((c) => c.address)
 }
 
 /** A fresh 6-digit passcode. */

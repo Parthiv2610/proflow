@@ -72,7 +72,7 @@ export function Dashboard() {
       hour12: true,
     })
   }
-  const { tasks, habits, goals, events, notes, setView, cycleTaskStatus, deleteTask, reorderTasks, toggleHabit, userName, lanInfo, lanAuthed, lanOnline, lastSyncedAt } = useStore()
+  const { tasks, habits, goals, events, notes, setView, cycleTaskStatus, deleteTask, reorderTasks, toggleHabit, userName, lanInfo, lanAuthed, lanOnline, lastSyncedAt, focusLog } = useStore()
 
   const syncIndicator = useMemo(() => {
     const active =
@@ -99,6 +99,20 @@ export function Dashboard() {
   const goalAvg = goals.length ? Math.round(goals.reduce((s, g) => s + g.progress, 0) / goals.length) : 0
   const onTrack = goals.filter((g) => g.status === "on-track").length
   const atRisk = goals.filter((g) => g.status === "at-risk").length
+
+  // Real deep-work hours: sum of completed focus sessions over the last 7 days
+  // (including today). Starts at 0 on a fresh install.
+  const weekFocusHours = useMemo(() => {
+    const now = new Date()
+    let minutes = 0
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+      const entry = focusLog.find((e) => e.date === key)
+      if (entry) minutes += entry.minutes
+    }
+    return Math.round((minutes / 60) * 10) / 10
+  }, [focusLog])
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6">
@@ -162,7 +176,7 @@ export function Dashboard() {
                 </span>
               </div>
               <p className="mt-2 flex items-center gap-1 text-sm font-medium text-success">
-                <TrendingUp className="size-4" /> +12% vs yesterday
+                <TrendingUp className="size-4" /> {done}/{total} tasks done
               </p>
               <div className="mt-4">
                 <ProgressBar value={pct} />
@@ -211,13 +225,13 @@ export function Dashboard() {
                 </span>
               </div>
               <div className="mt-3 flex items-end gap-2">
-                <span className="text-5xl font-bold tracking-tight">18.4</span>
+                <span className="text-5xl font-bold tracking-tight">{weekFocusHours}</span>
                 <span className="mb-1.5 text-sm text-muted-foreground">hrs</span>
               </div>
-              <p className="mt-2 text-sm text-muted-foreground">This week · Goal: 25 hrs</p>
-              <div className="mt-4">
-                <ProgressBar value={(18.4 / 25) * 100} tone="info" />
-              </div>
+              <p className="mt-2 text-sm text-muted-foreground">Last 7 days · logged from completed focus sessions</p>
+              <p className="mt-4 text-xs text-muted-foreground">
+                {weekFocusHours > 0 ? `${weekFocusHours} hrs of deep work this week` : "Complete a focus session to start tracking"}
+              </p>
             </Card>
             </div>
 
@@ -244,7 +258,7 @@ export function Dashboard() {
                   </p>
                   {overdue.length > 0 && (
                     <p className="mt-3 text-sm text-muted-foreground">
-                      Oldest: 3 days ago <span className="ml-2 font-medium text-danger">Needs attention</span>
+                      <span className="font-medium text-danger">Needs attention</span>
                     </p>
                   )}
                 </div>
@@ -362,13 +376,14 @@ export function Dashboard() {
                 <Gauge className="size-5 text-info" />
                 <div>
                   <p className="text-sm text-muted-foreground">Focus this week</p>
-                  <p className="text-2xl font-bold">18.4 hrs</p>
+                  <p className="text-2xl font-bold">{weekFocusHours} hrs</p>
                 </div>
               </div>
-              <div className="mt-4">
-                <ProgressBar value={(18.4 / 25) * 100} tone="info" />
-                <p className="mt-2 text-xs text-muted-foreground">6.6 hrs to weekly goal of 25 hrs</p>
-              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                {weekFocusHours > 0
+                  ? "Deep work logged automatically when you complete a focus session."
+                  : "No focus sessions yet — start the Focus Timer to build this week's total."}
+              </p>
             </Card>
             <FocusChart />
           </div>

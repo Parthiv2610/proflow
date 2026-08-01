@@ -1,7 +1,7 @@
 {
-  "latestVersion": "2.1.0",
-  "downloadUrl": "https://github.com/Parthiv2610/proflow/releases/latest/download/ProFlow-Setup-2.1.0.exe",
-  "releaseNotes": "✨ v2.1.0 — iOS-style Settings toggles, mobile sidebar drawer, responsive collapsible sidebar, phone bottom tab bar, Clear-all-data reset, and the ProFlow Android APK with laptop link over Wi-Fi!",
+  "latestVersion": "2.1.1",
+  "downloadUrl": "https://github.com/Parthiv2610/proflow/releases/latest/download/ProFlow-Setup-2.1.1.exe",
+  "releaseNotes": "✨ v2.1.1 — No more fake demo data: deep-work hours, the 7-day focus chart, and focus streaks now track your REAL completed focus sessions. Plus LAN-sync connection fixes (smart IP detection + firewall self-test).",
   "minimumVersion": "1.0.0",
   "updateUrl": "https://pro-flow-8mp2.vercel.app/versions.json"
 }

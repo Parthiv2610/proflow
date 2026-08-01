@@ -23,7 +23,31 @@ export function FocusView() {
     skipTimer,
     stopTimer,
     resetTimer,
+    focusLog,
   } = useStore()
+
+  // Real today stats from recorded focus sessions — zero on a fresh install.
+  const todayKey = (() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  })()
+  const todayEntry = focusLog.find((e) => e.date === todayKey)
+  const todayMinutes = todayEntry?.minutes ?? 0
+  const todaySessions = todayEntry?.sessions ?? 0
+  // Streak: consecutive days (ending today, or yesterday if today has none yet)
+  // with at least one completed focus session.
+  const focusStreak = (() => {
+    const keys = new Set(focusLog.map((e) => e.date))
+    let streak = 0
+    const d = new Date()
+    const mk = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`
+    if (!keys.has(mk(d))) d.setDate(d.getDate() - 1)
+    while (keys.has(mk(d))) {
+      streak++
+      d.setDate(d.getDate() - 1)
+    }
+    return streak
+  })()
 
   const progress = ((totalSeconds - secondsLeft) / totalSeconds) * 100
 
@@ -140,9 +164,9 @@ export function FocusView() {
 
           <Card className="flex flex-col gap-3">
             <h2 className="font-semibold">Today</h2>
-            <Stat label="Deep work" value="18.4 hrs" tone="text-info" />
-            <Stat label="Sessions completed" value="7" tone="text-primary" />
-            <Stat label="Focus streak" value="12 days" tone="text-focus" />
+            <Stat label="Deep work" value={`${todayMinutes > 0 ? (todayMinutes / 60).toFixed(1) : "0.0"} hrs`} tone="text-info" />
+            <Stat label="Sessions completed" value={String(todaySessions)} tone="text-primary" />
+            <Stat label="Focus streak" value={`${focusStreak} days`} tone="text-focus" />
           </Card>
         </div>
       </div>

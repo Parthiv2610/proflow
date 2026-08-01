@@ -49,6 +49,7 @@ export type Task = {
   status: TaskStatus
   due: string
   overdue?: boolean
+  completedAt?: string // "YYYY-MM-DD" when marked done — powers the 7-day chart
 }
 
 export type Habit = {
@@ -96,6 +97,12 @@ export type AppNotification = {
   time: string
   read: boolean
   type: "task" | "event" | "habit" | "system"
+}
+
+export type FocusLogEntry = {
+  date: string // "YYYY-MM-DD"
+  minutes: number // focus time completed that day
+  sessions: number // completed focus sessions that day
 }
 
 type TimerMode = "focus" | "break"
@@ -222,6 +229,8 @@ type Store = {
   sessionLabel: string
   focusMinutes: number
   breakMinutes: number
+  focusLog: FocusLogEntry[]
+  recordFocusSession: () => void
   setFocusMinutes: (n: number) => void
   setBreakMinutes: (n: number) => void
   startTimer: () => void
@@ -233,6 +242,12 @@ type Store = {
 }
 
 const StoreContext = createContext<Store | null>(null)
+
+/** Local date key in "YYYY-MM-DD" — used to group focus time and completions by day. */
+function todayKey() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
 
 const DEFAULT_FOCUS_MINUTES = 25
 const DEFAULT_BREAK_MINUTES = 5
@@ -262,6 +277,15 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [events, setRawEvents] = useLocalStorage<EventItem[]>("events", initialEvents)
   const [notes, setRawNotes] = useLocalStorage<Note[]>("notes", initialNotes)
   const [notifications, setRawNotifications] = useLocalStorage<AppNotification[]>("notifications", initialNotifications)
+  const [focusLog, setRawFocusLog] = useLocalStorage<FocusLogEntry[]>("focusLog", [])
+
+  // Projects derived from real task data — no hardcoded demo projects. A task
+  // can carry any project name; the sidebar/tasks view only ever shows projects
+  // the user has actually used.
+  const projects = useMemo(
+    () => Array.from(new Set(tasks.map((t) => t.project))).filter(Boolean),
+    [tasks],
+  )
 
   // user name
   const [userName, setRawUserName] = useLocalStorage("userName", "You")
@@ -290,6 +314,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const setEvents = wrapSetter<EventItem[]>("events", setRawEvents)
   const setNotes = wrapSetter<Note[]>("notes", setRawNotes)
   const setNotifications = wrapSetter<AppNotification[]>("notifications", setRawNotifications)
+  const setFocusLog = wrapSetter<FocusLogEntry[]>("focusLog", setRawFocusLog)
   const setUserName = wrapSetter<string>("userName", setRawUserName)
   const [avatarUrl, setAvatarUrl] = useLocalStorage("avatarUrl", "")
 
@@ -401,10 +426,11 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
         events: { v: versionsRef.current.events ?? 0, items: events },
         notes: { v: versionsRef.current.notes ?? 0, items: notes },
         notifications: { v: versionsRef.current.notifications ?? 0, items: notifications },
+        focusLog: { v: versionsRef.current.focusLog ?? 0, items: focusLog },
         userName: { v: versionsRef.current.userName ?? 0, items: userName },
       },
     }
-  }, [tasks, habits, goals, events, notes, notifications, userName])
+  }, [tasks, habits, goals, events, notes, notifications, focusLog, userName])
 
   // Merge a remote snapshot — per-collection last-write-wins.
   // Uses the RAW setters; version bumps happen explicitly here.
@@ -430,6 +456,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       apply<EventItem[]>("events", cols.events?.items, setRawEvents)
       apply<Note[]>("notes", cols.notes?.items, setRawNotes)
       apply<AppNotification[]>("notifications", cols.notifications?.items, setRawNotifications)
+      apply<FocusLogEntry[]>("focusLog", cols.focusLog?.items, setRawFocusLog)
       apply<string>("userName", cols.userName?.items, setRawUserName)
       return applied
     },
@@ -440,6 +467,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       setRawEvents,
       setRawNotes,
       setRawNotifications,
+      setRawFocusLog,
       setRawUserName,
     ],
   )
@@ -460,6 +488,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
               enabled: status.enabled,
               url: status.url,
               ip: status.ip,
+              ips: Array.isArray(status.ips) ? status.ips : status.ip ? [status.ip] : [],
               port: status.port,
               passcode: status.passcode,
             }
@@ -571,7 +600,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     if (!pending) return
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
     pushTimerRef.current = setTimeout(() => doPushNow(), 700)
-  }, [tasks, habits, goals, events, notes, notifications, userName, lanActive, doPushNow])
+  }, [tasks, habits, goals, events, notes, notifications, focusLog, userName, lanActive, doPushNow])
 
   // Phone: poll the laptop every few seconds.
   const phonePoll = useCallback(async () => {
@@ -650,9 +679,9 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [totalSeconds, setTotalSeconds] = useState(DEFAULT_FOCUS_MINUTES * 60)
   const [secondsLeft, setSecondsLeft] = useState(DEFAULT_FOCUS_MINUTES * 60)
   const [running, setRunning] = useState(false)
-  const [pomodoro, setPomodoro] = useState(3)
+  const [pomodoro, setPomodoro] = useState(1)
   const totalPomodoros = 4
-  const sessionLabel = "ProFlow Redesign"
+  const sessionLabel = "Deep Work"
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -677,9 +706,27 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setSecondsLeft(total)
   }, [focusMinutes, breakMinutes])
 
+  // Real deep-work tracking: every COMPLETED focus interval (timer ran down to
+  // zero) counts toward the dashboard stats and the 7-day chart. Skipped or
+  // stopped sessions don't count. Persisted + synced via LAN like everything else.
+  const recordFocusSession = useCallback(() => {
+    const key = todayKey()
+    setFocusLog((prev) => {
+      const existing = prev.find((e) => e.date === key)
+      if (existing) {
+        return prev.map((e) =>
+          e.date === key ? { ...e, minutes: e.minutes + focusMinutes, sessions: e.sessions + 1 } : e,
+        )
+      }
+      return [...prev, { date: key, minutes: focusMinutes, sessions: 1 }]
+    })
+  }, [focusMinutes, setFocusLog])
+
   // Session end: chime / notify / auto-advance according to preferences.
   useEffect(() => {
     if (secondsLeft !== 0 || !running) return
+    // A finished FOCUS interval is real deep-work time.
+    if (mode === "focus") recordFocusSession()
     const prefOn = (id: string) => prefs.some((p) => p.id === id && p.on)
     if (prefOn("soundEnd")) playChime()
     if (prefOn("focusReminders")) {
@@ -696,7 +743,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     } else {
       setRunning(false)
     }
-  }, [secondsLeft, running, mode, prefs, applyMode, totalPomodoros])
+  }, [secondsLeft, running, mode, prefs, applyMode, totalPomodoros, recordFocusSession])
 
   // When the timer is idle, reflect the configured durations immediately.
   useEffect(() => {
@@ -751,6 +798,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setRawEvents([])
     setRawNotes([])
     setRawNotifications([])
+    setRawFocusLog([])
     setRawUserName("You")
     setAvatarUrl("")
     setTheme("Purple")
@@ -776,6 +824,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setRawEvents,
     setRawNotes,
     setRawNotifications,
+    setRawFocusLog,
     setRawUserName,
     setAvatarUrl,
     setTheme,
@@ -825,14 +874,28 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
         if (t.id !== id) return t
         const next: TaskStatus =
           t.status === "todo" ? "in-progress" : t.status === "in-progress" ? "done" : "todo"
-        return { ...t, status: next, overdue: next === "done" ? false : t.overdue }
+        return {
+          ...t,
+          status: next,
+          overdue: next === "done" ? false : t.overdue,
+          completedAt: next === "done" && !t.completedAt ? todayKey() : t.completedAt,
+        }
       }),
     )
   }, [])
 
   const setTaskStatus = useCallback((id: string, status: TaskStatus) => {
     setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, status, overdue: status === "done" ? false : t.overdue } : t)),
+      prev.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              status,
+              overdue: status === "done" ? false : t.overdue,
+              completedAt: status === "done" && !t.completedAt ? todayKey() : t.completedAt,
+            }
+          : t,
+      ),
     )
   }, [])
 
@@ -921,7 +984,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       search,
       setSearch,
       tasks,
-      projects: ["ProFlow Redesign", "Platform", "Personal"],
+      projects,
       addTask,
       deleteTask,
       reorderTasks,
@@ -987,6 +1050,8 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       sessionLabel,
       focusMinutes,
       breakMinutes,
+      focusLog,
+      recordFocusSession,
       setFocusMinutes,
       setBreakMinutes,
       startTimer,
@@ -997,7 +1062,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       resetTimer,
     }),
     [
-      view, search, tasks, addTask, deleteTask, reorderTasks, cycleTaskStatus, setTaskStatus, habits, addHabit,
+      view, search, tasks, projects, addTask, deleteTask, reorderTasks, cycleTaskStatus, setTaskStatus, habits, addHabit,
       deleteHabit, toggleHabit, goals, addGoal, updateGoal, deleteGoal, events, addEvent, updateEvent, deleteEvent,
       notes, addNote, deleteNote, notifications, markRead, markAllRead,
       focusMode, toggleFocusMode, userName, setUserName, avatarUrl, setAvatarUrl,
@@ -1005,7 +1070,8 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       lanInfo, lanAuthed, lanOnline, lanBusy, lanError, lastSyncedAt, lanGateOpen,
       enableLan, disableLan, regenLanPasscode, submitLanPasscode, disconnectPhone, openLanGate, closeLanGate,
       secondsLeft, totalSeconds, running, mode, pomodoro, sessionLabel,
-      focusMinutes, breakMinutes, setFocusMinutes, setBreakMinutes,
+      focusMinutes, breakMinutes, focusLog, recordFocusSession,
+      setFocusMinutes, setBreakMinutes,
       startTimer, pauseTimer, toggleTimer, skipTimer, stopTimer, resetTimer,
     ],
   )
