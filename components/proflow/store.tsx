@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -13,12 +14,14 @@ import { useLocalStorage } from "@/lib/use-local-storage"
 import { showNotification } from "@/lib/notify"
 import { playChime } from "@/lib/sound"
 import {
+  buildCapLanInfo,
   clearPasscode,
   detectLan,
   getStoredEnabled,
   lanPull,
   lanPushSnapshot,
   setStoredEnabled,
+  setStoredLaptopUrl,
   storePasscode,
   type LanInfo,
   type SyncSnapshot,
@@ -181,10 +184,16 @@ type Store = {
   dismissTour: () => void
   startTour: () => void
   sessionCount: number
+  resetAllData: () => void
 
   // focus mode
   focusMode: boolean
   toggleFocusMode: () => void
+
+  // sidebar (collapsible drawer on phones)
+  sidebarOpen: boolean
+  toggleSidebar: () => void
+  closeSidebar: () => void
 
   // LAN sync (phone ↔ laptop over Wi-Fi, no account)
   lanInfo: LanInfo | null
@@ -201,6 +210,7 @@ type Store = {
   disconnectPhone: () => void
   openLanGate: () => void
   closeLanGate: () => void
+  connectToLaptop: (url: string) => Promise<"ok" | "wrong-code" | "unreachable">
 
   // timer
   secondsLeft: number
@@ -226,6 +236,10 @@ const StoreContext = createContext<Store | null>(null)
 
 const DEFAULT_FOCUS_MINUTES = 25
 const DEFAULT_BREAK_MINUTES = 5
+
+// Sidebar layout thresholds — the sidebar collapses by default on smaller windows.
+export const SIDEBAR_DRAWER_MAX = 1024 // below this width the sidebar is an overlay drawer
+const SIDEBAR_DEFAULT_OPEN_MIN = 1440 // at/above this width the sidebar starts open
 
 const initialTasks: Task[] = []
 
@@ -336,6 +350,28 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [focusMode, setFocusMode] = useState(false)
   const toggleFocusMode = useCallback(() => setFocusMode((prev) => !prev), [])
 
+  // Sidebar — collapses by default on smaller windows; the hamburger toggles it at any size.
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const toggleSidebar = useCallback(() => setSidebarOpen((prev) => !prev), [])
+  const closeSidebar = useCallback(() => setSidebarOpen(false), [])
+
+  // Default: open on large windows, collapsed on smaller ones. Also close the
+  // sidebar only when the window crosses INTO drawer territory (<1024px) — not on
+  // every resize below it, so the phone's URL bar/keyboard don't slam the drawer shut.
+  // useLayoutEffect sets the width-based default before first paint (no flash on wide screens).
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return
+    const lastWidth = { v: window.innerWidth }
+    setSidebarOpen(lastWidth.v >= SIDEBAR_DEFAULT_OPEN_MIN)
+    const onResize = () => {
+      const w = window.innerWidth
+      if (lastWidth.v >= SIDEBAR_DRAWER_MAX && w < SIDEBAR_DRAWER_MAX) setSidebarOpen(false)
+      lastWidth.v = w
+    }
+    window.addEventListener("resize", onResize)
+    return () => window.removeEventListener("resize", onResize)
+  }, [])
+
   // ── LAN sync (phone ↔ laptop over Wi-Fi, no account) ───────────
   const [lanInfo, setLanInfo] = useState<LanInfo | null>(null)
   const [lanAuthed, setLanAuthed] = useState(false)
@@ -347,7 +383,11 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
 
   const lanActive = useMemo(
     () =>
-      lanInfo?.mode === "electron" ? !!lanInfo.enabled : lanInfo?.mode === "phone" ? lanAuthed : false,
+      lanInfo?.mode === "electron"
+        ? !!lanInfo.enabled
+        : lanInfo?.mode === "phone" || lanInfo?.mode === "cap"
+          ? lanAuthed
+          : false,
     [lanInfo, lanAuthed],
   )
 
@@ -467,9 +507,31 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
 
   const disconnectPhone = useCallback(() => {
     clearPasscode()
+    setStoredLaptopUrl("")
     setLanAuthed(false)
     setLanOnline(false)
+    setLanInfo((prev) =>
+      prev && prev.mode === "cap"
+        ? { ...prev, enabled: false, url: null, ip: null, passcode: null }
+        : prev,
+    )
   }, [])
+
+  // Android APK: point the app at a specific laptop's LAN URL.
+  const connectToLaptop = useCallback(
+    async (url: string): Promise<"ok" | "wrong-code" | "unreachable"> => {
+      setStoredLaptopUrl(url)
+      setLanInfo(buildCapLanInfo(url))
+      const { authed, reachable } = await lanPull()
+      setLanAuthed(authed)
+      if (authed) {
+        setLanGateOpen(false)
+        return "ok"
+      }
+      return reachable ? "wrong-code" : "unreachable"
+    },
+    [],
+  )
 
   const openLanGate = useCallback(() => setLanGateOpen(true), [])
   const closeLanGate = useCallback(() => setLanGateOpen(false), [])
@@ -482,7 +544,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       if (lanInfo?.mode === "electron") {
         const api = (window as any).electronAPI
         ok = api?.lanPush ? await api.lanPush(snapRef.current) : false
-      } else if (lanInfo?.mode === "phone") {
+      } else if (lanInfo?.mode === "phone" || lanInfo?.mode === "cap") {
         ok = await lanPushSnapshot(snapRef.current)
       }
     } catch {
@@ -545,7 +607,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       }
       return
     }
-    if (lanInfo?.mode === "phone") {
+    if (lanInfo?.mode === "phone" || lanInfo?.mode === "cap") {
       if (lanAuthed) {
         // The first poll already performs the catch-up push (prevReachableRef
         // starts false), so no extra timer is needed here.
@@ -565,7 +627,10 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       setLanInfo(info)
       if (info.mode === "electron") {
         if (getStoredEnabled() && !info.enabled) enableLan()
-      } else if (info.mode === "phone") {
+      } else if (info.mode === "phone" || (info.mode === "cap" && info.url)) {
+        // Phone is always served by the laptop; the APK only connects once a
+        // laptop URL is configured — so don't pop the passcode gate on a fresh
+        // install before the user has linked a laptop.
         lanPull().then(({ authed }) => {
           if (cancelled) return
           setLanAuthed(authed)
@@ -663,6 +728,72 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setRunning(false)
     setSecondsLeft(totalSeconds)
   }, [totalSeconds])
+
+  // Wipe every piece of local data — Settings → "Clear all data".
+  // The source ships empty, so any lingering demo/test data lives in
+  // localStorage; this removes it all and resets state to fresh defaults.
+  const resetAllData = useCallback(() => {
+    // 1) Remove every persisted key (tasks, habits, notes, LAN code, etc.).
+    try {
+      const doomed: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k && k.startsWith("proflow-")) doomed.push(k)
+      }
+      doomed.forEach((k) => localStorage.removeItem(k))
+    } catch {
+      // storage unavailable — state reset below still applies for this session
+    }
+    // 2) Reset in-memory state to fresh defaults.
+    setRawTasks([])
+    setRawHabits([])
+    setRawGoals([])
+    setRawEvents([])
+    setRawNotes([])
+    setRawNotifications([])
+    setRawUserName("You")
+    setAvatarUrl("")
+    setTheme("Purple")
+    setPrefs(defaultPrefs)
+    setShowTour(false)
+    setSessionCount(0)
+    setFocusMinutes(DEFAULT_FOCUS_MINUTES)
+    setBreakMinutes(DEFAULT_BREAK_MINUTES)
+    setTotalSeconds(DEFAULT_FOCUS_MINUTES * 60)
+    setSecondsLeft(DEFAULT_FOCUS_MINUTES * 60)
+    setMode("focus")
+    setPomodoro(1)
+    setRunning(false)
+    // 3) Tear down LAN sync fully — server, passcode, authed state, stored laptop URL.
+    disableLan()
+    disconnectPhone()
+    setLanGateOpen(false)
+    setLastSyncedAt(null)
+  }, [
+    setRawTasks,
+    setRawHabits,
+    setRawGoals,
+    setRawEvents,
+    setRawNotes,
+    setRawNotifications,
+    setRawUserName,
+    setAvatarUrl,
+    setTheme,
+    setPrefs,
+    setShowTour,
+    setSessionCount,
+    setFocusMinutes,
+    setBreakMinutes,
+    setTotalSeconds,
+    setSecondsLeft,
+    setMode,
+    setPomodoro,
+    setRunning,
+    disableLan,
+    disconnectPhone,
+    setLanGateOpen,
+    setLastSyncedAt,
+  ])
 
   const addTask = useCallback<Store["addTask"]>((t) => {
     setTasks((prev) => [
@@ -826,8 +957,12 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       dismissTour,
       startTour,
       sessionCount,
+      resetAllData,
       focusMode,
       toggleFocusMode,
+      sidebarOpen,
+      toggleSidebar,
+      closeSidebar,
       lanInfo,
       lanAuthed,
       lanOnline,
@@ -842,6 +977,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       disconnectPhone,
       openLanGate,
       closeLanGate,
+      connectToLaptop,
       secondsLeft,
       totalSeconds,
       running,
@@ -865,7 +1001,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       deleteHabit, toggleHabit, goals, addGoal, updateGoal, deleteGoal, events, addEvent, updateEvent, deleteEvent,
       notes, addNote, deleteNote, notifications, markRead, markAllRead,
       focusMode, toggleFocusMode, userName, setUserName, avatarUrl, setAvatarUrl,
-      theme, setTheme, prefs, togglePref, showTour, dismissTour, startTour, sessionCount,
+      theme, setTheme, prefs, togglePref, showTour, dismissTour, startTour, sessionCount, resetAllData,
       lanInfo, lanAuthed, lanOnline, lanBusy, lanError, lastSyncedAt, lanGateOpen,
       enableLan, disableLan, regenLanPasscode, submitLanPasscode, disconnectPhone, openLanGate, closeLanGate,
       secondsLeft, totalSeconds, running, mode, pomodoro, sessionLabel,

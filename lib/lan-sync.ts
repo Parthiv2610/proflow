@@ -3,11 +3,14 @@
 /**
  * Renderer-side LAN sync support.
  *
- * Three possible modes:
+ * Four possible modes:
  *  - "electron" — running inside the desktop app. The laptop hosts the LAN
  *    server; the renderer talks to it through IPC (preload bridge).
  *  - "phone"    — this page was served by the laptop's LAN server (phone
  *    browser on the same Wi-Fi). Syncs by polling the same origin's API.
+ *  - "cap"      — running inside the Android APK (Capacitor WebView). The app
+ *    is NOT served by the laptop, so it stores the laptop's LAN URL and syncs
+ *    against that absolute URL.
  *  - "none"     — plain web (e.g. Vercel) or dev — no LAN sync.
  */
 
@@ -16,7 +19,7 @@ export type SyncSnapshot = {
 }
 
 export type LanInfo = {
-  mode: "electron" | "phone" | "none"
+  mode: "electron" | "phone" | "cap" | "none"
   enabled: boolean
   url: string | null
   ip: string | null
@@ -27,6 +30,7 @@ export type LanInfo = {
 
 const PASSCODE_KEY = "proflow-lan-code"
 const ENABLED_KEY = "proflow-lan-enabled"
+const LAPTOP_URL_KEY = "proflow-laptop-url"
 
 export function getStoredPasscode(): string {
   try {
@@ -69,6 +73,61 @@ export function setStoredEnabled(on: boolean) {
   }
 }
 
+/** True when running inside the Capacitor (Android APK) WebView. */
+export function isCapacitor(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    !!(window as any).Capacitor?.isNativePlatform?.()
+  )
+}
+
+export function getStoredLaptopUrl(): string {
+  try {
+    return localStorage.getItem(LAPTOP_URL_KEY) || ""
+  } catch {
+    return ""
+  }
+}
+
+export function setStoredLaptopUrl(url: string) {
+  try {
+    const clean = (url || "").trim().replace(/\/+$/, "")
+    if (clean) localStorage.setItem(LAPTOP_URL_KEY, clean)
+    else localStorage.removeItem(LAPTOP_URL_KEY)
+  } catch {
+    // storage unavailable
+  }
+}
+
+/** Build the LanInfo object for cap mode from a laptop URL. */
+export function buildCapLanInfo(url: string): LanInfo {
+  let ip: string | null = null
+  let port = 5174
+  try {
+    const u = new URL(url)
+    ip = u.hostname
+    port = u.port ? Number(u.port) : 5174
+  } catch {
+    // fall back to defaults
+  }
+  const clean = url.trim().replace(/\/+$/, "")
+  return {
+    mode: "cap",
+    enabled: !!clean,
+    url: clean || null,
+    ip,
+    port,
+    passcode: getStoredPasscode() || null,
+    host: null,
+  }
+}
+
+/** The API base for cap mode (the laptop URL); "" means same-origin. */
+function apiBase(): string {
+  if (isCapacitor()) return getStoredLaptopUrl()
+  return ""
+}
+
 /**
  * Figure out which sync mode this page is running in.
  * Returns null when there is no LAN sync at all.
@@ -93,7 +152,12 @@ export async function detectLan(): Promise<LanInfo | null> {
     }
   }
 
-  // 2) Phone/browser served by the laptop's LAN server
+  // 2) Android APK (Capacitor WebView) — link to the laptop URL directly
+  if (isCapacitor()) {
+    return buildCapLanInfo(getStoredLaptopUrl())
+  }
+
+  // 3) Phone/browser served by the laptop's LAN server
   try {
     const res = await fetch("/api/info", { cache: "no-store" })
     if (res.headers.get("x-proflow-lan") === "1") {
@@ -123,11 +187,15 @@ export async function detectLan(): Promise<LanInfo | null> {
 
 type PullResult = { snap: SyncSnapshot | null; authed: boolean; reachable: boolean }
 
-/** Phone transport: fetch the laptop's current state. */
+/** Pull the laptop's current state (same-origin in phone mode, absolute URL in cap mode). */
 export async function lanPull(): Promise<PullResult> {
   try {
     const code = getStoredPasscode()
-    const res = await fetch("/api/state", {
+    const base = apiBase()
+    // In the APK with no laptop URL configured yet, there is nothing to reach —
+    // don't fall back to a same-origin fetch (the WebView has no LAN server).
+    if (isCapacitor() && !base) return { snap: null, authed: false, reachable: false }
+    const res = await fetch(`${base}/api/state`, {
       headers: { "X-ProFlow-Passcode": code },
       cache: "no-store",
     })
@@ -144,11 +212,13 @@ export async function lanPull(): Promise<PullResult> {
   }
 }
 
-/** Phone transport: push our state to the laptop. */
+/** Push our state to the laptop (same-origin in phone mode, absolute URL in cap mode). */
 export async function lanPushSnapshot(snap: SyncSnapshot): Promise<boolean> {
   try {
     const code = getStoredPasscode()
-    const res = await fetch("/api/state", {
+    const base = apiBase()
+    if (isCapacitor() && !base) return false
+    const res = await fetch(`${base}/api/state`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-ProFlow-Passcode": code },
       body: JSON.stringify(snap),

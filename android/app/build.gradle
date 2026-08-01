@@ -1,0 +1,80 @@
+apply plugin: 'com.android.application'
+
+// Release signing: keystore.properties in this folder (committed for convenience)
+// can be overridden by CI env vars so the password can live in GitHub secrets.
+def keystoreProps = new Properties()
+def keystorePropsFile = rootProject.file('app/keystore.properties')
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
+def ksStoreFile = System.getenv('ANDROID_KEYSTORE_FILE') ?: keystoreProps['storeFile']
+def ksStorePass = System.getenv('ANDROID_KEYSTORE_PASSWORD') ?: keystoreProps['storePassword']
+def ksKeyAlias  = System.getenv('ANDROID_KEY_ALIAS')       ?: keystoreProps['keyAlias']
+def ksKeyPass   = System.getenv('ANDROID_KEY_PASSWORD')    ?: keystoreProps['keyPassword']
+
+android {
+    namespace = "com.proflow.app"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.proflow.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 20000
+        versionName "2.0.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        release {
+            if (ksStoreFile && ksStorePass) {
+                storeFile file(ksStoreFile)
+                storePassword ksStorePass
+                keyAlias ksKeyAlias ?: 'proflow'
+                keyPassword ksKeyPass ?: ksStorePass
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (ksStoreFile && ksStorePass) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

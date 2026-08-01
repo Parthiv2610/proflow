@@ -71,6 +71,39 @@ no internet, just both devices on the **same Wi-Fi**.
 
 - **iPhone:** Safari → Share → **Add to Home Screen**
 - **Android:** Chrome → ⋮ menu → **Add to Home screen**
+- **Or install the Android APK** (below) for a true native app that links to your laptop
+
+### 📱 Android APK (native app)
+
+A **ProFlow APK** (`app-release.apk`, properly signed) is built automatically by GitHub
+Actions on every `v*` release tag and attached to the release page — grab it from
+**Releases → Assets → `app-release.apk`**.
+
+**Install:**
+
+1. Download `app-release.apk` on your Android phone
+2. Tap it — Android may ask to allow installs from your browser; allow it
+3. If prompted by Play Protect, tap **Install anyway** (it's a self-built app, not from the Play Store)
+
+**Link it to your laptop (same Wi-Fi):**
+
+1. On the laptop: **Settings → LAN Sync** → turn on **"Allow your phone to use this app"**
+2. Note the address shown (e.g. `http://192.168.1.5:5174`)
+3. In the APK: **Settings → LAN Sync** → type that address → **Connect**
+4. Enter the 6-digit passcode from the laptop screen — done!
+
+The APK syncs both ways, exactly like the phone-browser flow — no account, no internet,
+just the same Wi-Fi. Not connected yet? It shows "Not connected" and a hint instead of a
+confusing passcode prompt.
+
+> 🛠️ **Build it yourself:** run `pnpm exec cap sync android && cd android && ./gradlew assembleRelease`
+> after a `next build` to produce the signed APK locally (the signing keystore lives in
+> `android/app/proflow-release.keystore` with `keystore.properties`).
+>
+> 🔐 **Signing note:** the keystore and its password are committed for convenience so the
+> CI build works out of the box. The workflow already honors the `ANDROID_KEYSTORE_PASSWORD`
+> and `ANDROID_KEY_PASSWORD` GitHub secrets — to harden a public release, set those secrets,
+> remove `keystore.properties`, and rotate the keystore.
 
 > 💡 **How syncing works:** the laptop is the "brain" — your phone is a remote
 > screen that talks to it over Wi-Fi. Keep ProFlow open on the laptop with LAN

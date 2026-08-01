@@ -1,4 +1,4 @@
 allowBuilds:
-  electron: set this to true or false
-  msw: set this to true or false
-  sharp: set this to true or false
+  electron: true
+  msw: true
+  sharp: true

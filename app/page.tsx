@@ -13,13 +13,14 @@ import { NotesView } from "@/components/proflow/views/notes-view"
 import { NotificationsView } from "@/components/proflow/views/notifications-view"
 import { SettingsView } from "@/components/proflow/views/settings-view"
 import { TasksView } from "@/components/proflow/views/tasks-view"
-import { ProFlowProvider, useStore } from "@/components/proflow/store"
+import { ProFlowProvider, useStore, SIDEBAR_DRAWER_MAX } from "@/components/proflow/store"
 import { Sidebar } from "@/components/proflow/sidebar"
 import { Topbar } from "@/components/proflow/topbar"
+import { BottomTabs } from "@/components/proflow/bottom-tabs"
 import { WelcomeTour } from "@/components/proflow/welcome-tour"
 
 function Workspace() {
-  const { view, focusMode, toggleFocusMode } = useStore()
+  const { view, focusMode, toggleFocusMode, sidebarOpen, closeSidebar } = useStore()
   const [captureOpen, setCaptureOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
 
@@ -38,13 +39,21 @@ function Workspace() {
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
+  // Close the sidebar drawer when navigating — but only in drawer mode (small windows).
+  // On desktop the inline sidebar stays open so clicking a nav item doesn't collapse it.
+  useEffect(() => {
+    if (typeof window === "undefined" || window.innerWidth >= SIDEBAR_DRAWER_MAX) return
+    closeSidebar()
+  }, [view, closeSidebar])
+
   return (
     <div className="flex h-svh overflow-hidden bg-background text-foreground">
-      {/* Animated sidebar — slides out when focus mode is active */}
+      {/* Desktop sidebar — inline and collapsible. Hidden below lg (drawer takes over),
+          collapsed by default on smaller laptop windows, and slides out in focus mode. */}
       <div
-        className="overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out"
+        className="hidden overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out lg:block"
         style={{
-          width: focusMode ? 0 : 256,
+          width: focusMode || !sidebarOpen ? 0 : 256,
           opacity: focusMode ? 0 : 1,
         }}
       >
@@ -52,6 +61,19 @@ function Workspace() {
           <Sidebar />
         </div>
       </div>
+
+      {/* Mobile sidebar drawer — slides in from the left over a backdrop */}
+      {sidebarOpen && !focusMode && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={closeSidebar}
+          />
+          <div className="absolute inset-y-0 left-0 animate-in slide-in-from-left-2 duration-300">
+            <Sidebar />
+          </div>
+        </div>
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Animated topbar — slides up when focus mode is active */}
@@ -80,6 +102,11 @@ function Workspace() {
           {/* Exit Focus Mode badge (only shows when focusMode is true) */}
           <FocusModeExit />
         </main>
+
+        {/* Phone bottom tab bar — fast navigation on the APK; hidden on desktop & focus mode */}
+        <div className={cn("shrink-0 lg:hidden", focusMode && "hidden")}>
+          <BottomTabs />
+        </div>
       </div>
 
       <CaptureDialog open={captureOpen} onClose={() => setCaptureOpen(false)} />
@@ -100,7 +127,7 @@ function LanPasscodeGate() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  if (lanInfo?.mode !== "phone" || lanAuthed || !lanGateOpen) return null
+  if ((lanInfo?.mode !== "phone" && lanInfo?.mode !== "cap") || lanAuthed || !lanGateOpen) return null
 
   const submit = async () => {
     setBusy(true)
@@ -123,7 +150,9 @@ function LanPasscodeGate() {
         </div>
         <h2 className="mt-3 text-lg font-semibold text-foreground">Connect to your laptop</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          This page is being served by your ProFlow laptop on the same Wi-Fi. Enter the 6-digit code shown under{" "}
+          {lanInfo?.mode === "cap"
+            ? "This app is linked to your ProFlow laptop on the same Wi-Fi. Enter the 6-digit code shown under"
+            : "This page is being served by your ProFlow laptop on the same Wi-Fi. Enter the 6-digit code shown under"}{" "}
           <span className="font-medium text-foreground">Settings → LAN Sync</span> on the laptop.
         </p>
         <input

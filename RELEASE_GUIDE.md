@@ -2,6 +2,20 @@
 
 This guide walks you through creating a GitHub Release with the signed installer.
 
+> ## 🤖 Auto-built releases (recommended)
+>
+> The repo now has a GitHub Actions workflow (`.github/workflows/release-installer.yml`)
+> that **automatically builds the installer from a fresh checkout** every time you push a
+> `v*` tag (e.g. `v2.0.0`), then attaches `ProFlow-Setup-*.exe` to the release.
+>
+> It rebuilds `next build` (static export) + `electron-builder` from source on a clean
+> Windows runner, so **the stale-build blank-screen bug can never happen again** — and it
+> fails the build if the export is the 404 shell (no hydration).
+>
+> **To release with CI:** just push the tag and publish the release on GitHub — the
+> installer uploads itself. No need to build or upload manually. The steps below remain
+> for manual/fallback releases.
+
 ---
 
 ## Step 1 — Go to GitHub Releases

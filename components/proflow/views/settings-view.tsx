@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import QRCode from "react-qr-code"
 import { cn, timeAgo } from "@/lib/utils"
+import { getStoredLaptopUrl } from "@/lib/lan-sync"
 import { Card, PageHeader } from "../ui"
 import { useStore, ACCENTS } from "../store"
 
@@ -27,21 +28,25 @@ function Switch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
       role="switch"
       aria-checked={on}
       onClick={onToggle}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-        on ? "bg-primary" : "bg-muted"
-      }`}
+      className={cn(
+        "relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors duration-200",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        on ? "bg-primary" : "bg-muted",
+      )}
     >
       <span
-        className={`absolute top-0.5 size-5 rounded-full bg-background transition-transform ${
-          on ? "translate-x-[22px]" : "translate-x-0.5"
-        }`}
+        className={cn(
+          "absolute top-1 left-1 size-5 rounded-full bg-white shadow-md transition-all duration-200",
+          on ? "translate-x-5" : "translate-x-0",
+        )}
       />
     </button>
   )
 }
 
 export function SettingsView() {
-  const { userName, setUserName, avatarUrl, setAvatarUrl, theme, setTheme, prefs, togglePref, startTour } = useStore()
+  const { userName, setUserName, avatarUrl, setAvatarUrl, theme, setTheme, prefs, togglePref, startTour, resetAllData } = useStore()
+  const [confirmReset, setConfirmReset] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -182,6 +187,52 @@ export function SettingsView() {
         </h2>
         <UpdateCard />
       </Card>
+
+      {/* Danger zone — clear all local data */}
+      <Card className="space-y-3 border-danger/20">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <h3 className="font-semibold">Clear all data</h3>
+            <p className="text-xs text-muted-foreground">
+              Deletes every task, habit, note, event, goal, and setting stored on this device and
+              starts fresh. This cannot be undone.
+            </p>
+          </div>
+          <Trash2 className="size-5 shrink-0 text-danger" />
+        </div>
+        {!confirmReset ? (
+          <button
+            type="button"
+            onClick={() => setConfirmReset(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs font-medium text-danger transition-colors hover:bg-danger/20"
+          >
+            <Trash2 className="size-3.5" />
+            Clear all data
+          </button>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs text-danger">Are you sure? This wipes everything.</p>
+            <button
+              type="button"
+              onClick={() => {
+                resetAllData()
+                setConfirmReset(false)
+              }}
+              className="flex items-center gap-1.5 rounded-lg bg-danger px-3 py-2 text-xs font-semibold text-danger-foreground transition-colors hover:bg-danger/90"
+            >
+              <Trash2 className="size-3.5" />
+              Yes, delete everything
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmReset(false)}
+              className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/50"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </Card>
     </div>
   )
 }
@@ -199,9 +250,13 @@ function LanSyncCard() {
     disableLan,
     regenLanPasscode,
     disconnectPhone,
+    connectToLaptop,
     openLanGate,
   } = useStore()
   const [copied, setCopied] = useState(false)
+  const [laptopUrl, setLaptopUrl] = useState(getStoredLaptopUrl())
+  const [connectState, setConnectState] = useState<"idle" | "busy" | "error">("idle")
+  const [connectError, setConnectError] = useState<string | null>(null)
 
   const copy = (text: string) => {
     navigator.clipboard?.writeText(text).then(
@@ -210,6 +265,112 @@ function LanSyncCard() {
         setTimeout(() => setCopied(false), 2000)
       },
       () => {},
+    )
+  }
+
+  // ── APK view (Android app linking to a specific laptop over Wi-Fi) ──
+  if (lanInfo?.mode === "cap") {
+    const connect = async () => {
+      const url = laptopUrl.trim()
+      if (!url) return
+      setConnectState("busy")
+      setConnectError(null)
+      const result = await connectToLaptop(url)
+      setConnectState("idle")
+      if (result === "unreachable") {
+        setConnectError(
+          "Can't reach that laptop. Make sure ProFlow is open on it, both devices are on the same Wi-Fi, and LAN Sync is turned on.",
+        )
+      }
+    }
+    return (
+      <div className="mt-4 space-y-3">
+        <div
+          className={cn(
+            "flex items-center gap-3 rounded-lg border p-3",
+            lanAuthed && lanOnline
+              ? "border-success/30 bg-success/5"
+              : "border-warning/30 bg-warning/5",
+          )}
+        >
+          {lanAuthed && lanOnline ? (
+            <Wifi className="size-5 shrink-0 text-success" />
+          ) : (
+            <WifiOff className="size-5 shrink-0 text-warning" />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground">
+              {lanAuthed && lanOnline ? "Connected to your laptop" : lanInfo?.url ? "Laptop offline" : "Not connected"}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {lanAuthed && lanOnline
+                ? `Synced ${timeAgo(lastSyncedAt)} · ${lanInfo?.ip || "laptop"}`
+                : lanInfo?.url
+                  ? "Keep ProFlow open on the laptop and both devices on the same Wi-Fi."
+                  : "Enter the address shown on your laptop's Settings → LAN Sync screen."}
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Laptop address</p>
+          <div className="mt-2 flex gap-2">
+            <input
+              value={laptopUrl}
+              onChange={(e) => setLaptopUrl(e.target.value)}
+              placeholder="http://192.168.1.5:5174"
+              inputMode="url"
+              autoCapitalize="off"
+              autoCorrect="off"
+              className="min-w-0 flex-1 rounded-lg border border-border bg-secondary/40 px-3 py-2 font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
+            />
+            {lanAuthed ? (
+              <button
+                type="button"
+                onClick={disconnectPhone}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-danger/40 hover:bg-danger/10 hover:text-danger"
+              >
+                <Unlink className="size-3.5" />
+                Disconnect
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={connect}
+                disabled={connectState === "busy" || !laptopUrl.trim()}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {connectState === "busy" ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Smartphone className="size-3.5" />
+                )}
+                Connect
+              </button>
+            )}
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            On the laptop, open <span className="font-medium text-foreground">Settings → LAN Sync</span> and
+            switch it on — it shows an address like <code className="rounded bg-secondary/40 px-1 font-mono text-xs">http://192.168.1.5:5174</code>.
+            Type it here and tap Connect.
+          </p>
+        </div>
+
+        {connectError && (
+          <p className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger">{connectError}</p>
+        )}
+
+        {lanInfo?.url && !lanAuthed && (
+          <button
+            type="button"
+            onClick={openLanGate}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Smartphone className="size-3.5" />
+            Enter passcode to sync
+          </button>
+        )}
+      </div>
     )
   }
 

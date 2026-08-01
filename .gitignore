@@ -56,6 +56,18 @@ build/*.p12
 package-lock.json
 
 # --------------------------------
+# Android / Capacitor build output
+# --------------------------------
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/src/main/assets/public/
+android/capacitor-cordova-android-plugins/
+android/app/src/main/assets/capacitor.plugins.json
+*.apk
+
+# --------------------------------
 # Logs & debug
 # --------------------------------
 *.log

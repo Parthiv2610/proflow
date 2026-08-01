@@ -1,13 +1,13 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import { Bell, Command, Pause, Play, Plus, Search, Zap } from "lucide-react"
+import { Bell, Command, Menu, Pause, Play, Plus, Search, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatTime, useStore } from "./store"
 
 export function Topbar({ onCapture }: { onCapture: () => void }) {
-  const { search, setSearch, setView, secondsLeft, running, toggleTimer, notifications } = useStore()
+  const { search, setSearch, setView, secondsLeft, running, toggleTimer, notifications, toggleSidebar, sidebarOpen } = useStore()
   const searchRef = useRef<HTMLInputElement>(null)
   const unread = notifications.filter((n) => !n.read).length
 
@@ -24,6 +24,17 @@ export function Topbar({ onCapture }: { onCapture: () => void }) {
 
   return (
     <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-background/80 px-6 py-3 backdrop-blur-md">
+      {/* Hamburger — toggles the sidebar at every window size: opens the drawer on
+          small windows, expands/collapses the inline sidebar on larger ones. */}
+      <button
+        type="button"
+        onClick={toggleSidebar}
+        aria-label={sidebarOpen ? "Close navigation" : "Open navigation"}
+        className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border bg-secondary/50 text-foreground transition-colors hover:bg-muted"
+      >
+        <Menu className="size-4" />
+      </button>
+
       <form
         className="relative flex-1 max-w-xl"
         onSubmit={(e) => {
@@ -74,7 +85,7 @@ export function Topbar({ onCapture }: { onCapture: () => void }) {
 
         <Button size="lg" onClick={onCapture} className="gap-1.5">
           <Plus className="size-4" />
-          Capture
+          <span className="hidden sm:inline">Capture</span>
         </Button>
 
         <button
