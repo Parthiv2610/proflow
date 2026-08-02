@@ -1275,7 +1275,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       view, search, tasks, projects, addTask, deleteTask, reorderTasks, cycleTaskStatus, setTaskStatus, habits, addHabit,
       deleteHabit, toggleHabit, goals, addGoal, updateGoal, deleteGoal, events, addEvent, updateEvent, deleteEvent,
       notes, addNote, deleteNote, notifications, markRead, markAllRead,
-      focusMode, toggleFocusMode, userName, setUserName, avatarUrl, setAvatarUrl,
+      focusMode, toggleFocusMode, sidebarOpen, toggleSidebar, closeSidebar, userName, setUserName, avatarUrl, setAvatarUrl,
       theme, setTheme, prefs, togglePref, showTour, dismissTour, startTour, sessionCount, resetAllData,
       secondsLeft, totalSeconds, running, mode, pomodoro, sessionLabel,
       focusMinutes, breakMinutes, weeklyFocusGoal, setWeeklyFocusGoal, focusLog, recordFocusSession, xp, addXp,
