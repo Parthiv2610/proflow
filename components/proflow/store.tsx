@@ -494,9 +494,13 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
         return
       }
     }
+    // The ref mirrors the TRUE ledger sum (which can dip negative in the rare
+    // both-devices-spend-the-same-balance case) so affordability checks and
+    // level math stay honest; only the DISPLAY is clamped at 0 — an earn
+    // never visibly flickers away in the overdraft state.
     const sum = ledgerSum(xpEvents)
     xpRef.current = sum
-    setXp(sum)
+    setXp(Math.max(0, sum))
   }, [xpEvents, setXp, setXpEvents])
 
   // Award XP (positive only) and celebrate when it crosses a level boundary.
@@ -506,7 +510,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     const next = xpRef.current + amount
     xpRef.current = next
     setXpEvents((prev) => [...prev, { id: `xp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, amount }])
-    setXp(next)
+    setXp(Math.max(0, next))
     const after = levelFor(next)
     if (after > before) celebrate({ big: true })
   }, [setXp, setXpEvents])
@@ -574,18 +578,24 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       setLastShieldMilestone(milestone)
       // Deterministic event ids: if both devices cross the same milestone at
       // the same time, the ledger union dedupes and the reward is granted once.
+      // The ref guards also skip when a PULL already delivered this milestone's
+      // grant — no duplicate event locally, no duplicate celebration popup.
       if (shieldsRef.current < MAX_SHIELDS) {
-        setShieldEvents((prev) => [...prev, { id: `free-${milestone}`, amount: 1 }])
-        shieldsRef.current = Math.min(MAX_SHIELDS, shieldsRef.current + 1)
-        setStreakShields(shieldsRef.current)
-        celebrate({ big: true })
-        showNotification("ProFlow", `🎁 Level ${milestone} reached — you earned a free streak shield!`)
+        if (!shieldEventsRef.current.some((e) => e.id === `free-${milestone}`)) {
+          setShieldEvents((prev) => [...prev, { id: `free-${milestone}`, amount: 1 }])
+          shieldsRef.current = Math.min(MAX_SHIELDS, shieldsRef.current + 1)
+          setStreakShields(shieldsRef.current)
+          celebrate({ big: true })
+          showNotification("ProFlow", `🎁 Level ${milestone} reached — you earned a free streak shield!`)
+        }
       } else {
         const bonus = Math.round(SHIELD_PRICE / 2)
-        xpRef.current += bonus
-        setXpEvents((prev) => [...prev, { id: `bonus-${milestone}`, amount: bonus }])
-        setXp(xpRef.current)
-        showNotification("ProFlow", `🎁 Level ${milestone} reached — shields are full, so here's ${bonus} XP instead!`)
+        if (!xpEventsRef.current.some((e) => e.id === `bonus-${milestone}`)) {
+          xpRef.current += bonus
+          setXpEvents((prev) => [...prev, { id: `bonus-${milestone}`, amount: bonus }])
+          setXp(Math.max(0, xpRef.current))
+          showNotification("ProFlow", `🎁 Level ${milestone} reached — shields are full, so here's ${bonus} XP instead!`)
+        }
       }
       paid = milestone
     }
@@ -780,7 +790,6 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       return
     }
     let shieldsLeft = shieldsRef.current
-    let used = 0
     const useEvents: ShieldEvent[] = []
     const next = habits.map((h) => {
       const base = { ...h, doneToday: false }
@@ -802,16 +811,24 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       // deterministic event (date + habit) — if BOTH devices process the same
       // missed day, the union merge dedupes and the shield is never
       // double-consumed.
-      let absorbed = 0
-      while (absorbed < missedDays.length && shieldsLeft > 0) {
-        useEvents.push({ id: `use:${missedDays[absorbed]}:${h.id}`, amount: -1 })
+      // Days already covered by the other device (its use event is already in
+      // the ledger) count as protected even when THIS device holds no shield.
+      const uncovered = missedDays.filter(
+        (d) => !shieldEventsRef.current.some((e) => e.id === `use:${d}:${h.id}`),
+      )
+      let absorbed = missedDays.length - uncovered.length
+      for (const d of uncovered) {
+        if (shieldsLeft <= 0) break
+        useEvents.push({ id: `use:${d}:${h.id}`, amount: -1 })
         shieldsLeft -= 1
         absorbed++
       }
-      used += absorbed
       // Not enough shields to cover every missed day → the streak breaks.
       return absorbed < missedDays.length ? { ...base, streak: 0 } : base
     })
+    // used = consumptions recorded by THIS device; days the other device
+    // already covered don't double-deduct or double-notify.
+    const used = useEvents.length
     if (used > 0) {
       shieldsRef.current = shieldsLeft
       setShieldEvents((prev) => [...prev, ...useEvents])
@@ -1475,6 +1492,10 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setRawNotes([])
     setRawNotifications([])
     setRawFocusLog([])
+    // Gamification ledgers reset locally — but the LAN union merge keeps the
+    // other device's events, so a wiped device re-pulls the old XP/shields on
+    // reconnect (same as synced tasks; a cross-device wipe is a separate
+    // feature).
     setRawXpEvents([])
     xpRef.current = 0
     setXp(0)
