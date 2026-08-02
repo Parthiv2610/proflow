@@ -27,7 +27,6 @@ Track tasks, habits, goals, calendar events, and deep work sessions — all in o
 | 🧘 **Focus Mode** | Distraction-free mode hiding sidebar and topbar |
 | 🎉 **Welcome Tour** | 8-step onboarding overlay on first visit |
 | 💡 **Tooltip Hints** | Gentle sidebar tooltips for the first few sessions |
-| 📶 **LAN Sync** | Native apps only — link the Android app to your laptop over Wi-Fi, no account or internet needed |
 | 💾 **Local Persistence** | All data saves to localStorage — survives reloads |
 
 ---
@@ -72,19 +71,6 @@ changes — it always points at the newest build:
 > installer installs it **over** the current version (same signature, same
 > keystore) — all your data is preserved. No need to re-download the APK.
 
-**Link it to your laptop (same Wi-Fi):**
-
-1. On the laptop: **Settings → LAN Sync** → turn on **"Allow your phone to use this app"**
-2. Note the address shown (e.g. `http://192.168.1.5:5174`)
-3. In the APK: **Settings → LAN Sync** → type that address → **Connect**
-4. Enter the 6-digit passcode from the laptop screen — done!
-
-The APK syncs both ways, no account, no internet,
-just the same Wi-Fi. Not connected yet? It shows "Not connected" and a hint instead of a
-confusing passcode prompt.
-
-You could just use only the laptop app or phone app separately
-
 > 🛠️ **Build it yourself:** run `pnpm exec cap sync android && cd android && ./gradlew assembleRelease`
 > after a `next build` to produce the signed APK locally (the signing keystore lives in
 > `android/app/proflow-release.keystore` with `keystore.properties`).
@@ -93,13 +79,6 @@ You could just use only the laptop app or phone app separately
 > CI build works out of the box. The workflow already honors the `ANDROID_KEYSTORE_PASSWORD`
 > and `ANDROID_KEY_PASSWORD` GitHub secrets — to harden a public release, set those secrets,
 > remove `keystore.properties`, and rotate the keystore.
-
-> 💡 **How syncing works:** the laptop is the "brain" — your phone is a remote
-> screen that talks to it over Wi-Fi. Keep ProFlow open on the laptop with LAN
-> Sync on. If the phone loses the connection, it keeps its own copy of your data
-> and re-syncs automatically when you reconnect. Multiple people can each use
-> their own laptop + phone pair on the same network — every laptop shows its own
-> QR code and passcode, and data never mixes between them.
 
 ---
 
@@ -212,11 +191,9 @@ pro-flow/
 │   └── ui/                   # shadcn-style UI primitives
 ├── electron/
 │   ├── main.js               # Electron main process
-│   ├── preload.js            # Preload script (IPC bridge)
-│   └── lan-server.js         # LAN sync server (Wi-Fi phone access)
+│   └── preload.js            # Preload script (IPC bridge)
 ├── lib/                      # Utility functions
 │   ├── use-local-storage.ts  # localStorage persistence hook
-│   ├── lan-sync.ts           # Renderer-side LAN sync (phone polling, detection)
 │   └── use-update.ts         # Shared auto-update state machine (desktop + Android)
 ├── public/                   # Static assets
 ├── build/                    # Build scripts & installer config

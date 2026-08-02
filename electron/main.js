@@ -1,10 +1,7 @@
 const { app, BrowserWindow, Menu, ipcMain } = require("electron")
 const path = require("path")
 const fs = require("fs")
-const http = require("http")
-const os = require("os")
 const { autoUpdater } = require("electron-updater")
-const { startLanServer, getLanIPs, generatePasscode } = require("./lan-server")
 
 const isDev = !app.isPackaged
 
@@ -72,86 +69,7 @@ function wireAutoUpdater() {
 // Create the main window
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// LAN Sync — serve the app + a sync endpoint over WiFi for phone access
-// ---------------------------------------------------------------------------
-
-const LAN_STATE_FILE = () => path.join(app.getPath("userData"), "lan-state.json")
-
-let lanServer = null // running server handle (null when disabled)
 let mainWindow = null
-
-function loadLanMeta() {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(LAN_STATE_FILE(), "utf-8"))
-    return { passcode: parsed.passcode || "" }
-  } catch {
-    return { passcode: "" }
-  }
-}
-
-let lanMeta = loadLanMeta()
-
-function persistLanMeta() {
-  try {
-    fs.mkdirSync(path.dirname(LAN_STATE_FILE()), { recursive: true })
-    const existing = fs.existsSync(LAN_STATE_FILE())
-      ? JSON.parse(fs.readFileSync(LAN_STATE_FILE(), "utf-8"))
-      : {}
-    fs.writeFileSync(
-      LAN_STATE_FILE(),
-      JSON.stringify({ ...existing, passcode: lanMeta.passcode || "" }),
-    )
-  } catch {
-    // best effort
-  }
-}
-
-function getLanStatus() {
-  const ips = getLanIPs()
-  const ip = ips[0] || null
-  return {
-    enabled: !!lanServer,
-    url: lanServer && ip ? `http://${ip}:${lanServer.port}` : null,
-    ip,
-    ips, // all candidate addresses, best first — the UI can offer alternatives
-    port: lanServer ? lanServer.port : 5174,
-    passcode: lanMeta.passcode || "",
-    host: os.hostname(),
-  }
-}
-
-function broadcastToRenderer(payload) {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("lan:remote", payload)
-  }
-}
-
-async function setLanEnabled(enabled) {
-  if (enabled && !lanServer) {
-    if (!lanMeta.passcode) {
-      lanMeta.passcode = generatePasscode()
-      persistLanMeta()
-    }
-    try {
-      lanServer = await startLanServer({
-        port: 5174,
-        outDir: path.join(__dirname, "..", "out"),
-        stateFile: LAN_STATE_FILE(),
-        passcode: lanMeta.passcode,
-        onRemoteChange: (merged) => broadcastToRenderer(merged),
-      })
-      return getLanStatus()
-    } catch (err) {
-      return { ...getLanStatus(), error: String(err && err.message ? err.message : err) }
-    }
-  }
-  if (!enabled && lanServer) {
-    await lanServer.stop()
-    lanServer = null
-  }
-  return getLanStatus()
-}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -282,75 +200,12 @@ ipcMain.handle("update:install", async () => {
   return { status: "installing" }
 })
 
-// LAN Sync IPC
-ipcMain.handle("lan:get-status", () => getLanStatus())
-
-ipcMain.handle("lan:set-enabled", async (_event, enabled) => setLanEnabled(!!enabled))
-
-ipcMain.handle("lan:push", (_event, snapshot) => {
-  if (!lanServer || !snapshot) return false
-  try {
-    // The laptop's own changes are merged into the shared state and persisted.
-    // The phone picks them up on its next poll — no broadcast needed here.
-    lanServer.mergeIncoming(snapshot)
-    return true
-  } catch {
-    return false
-  }
-})
-
-ipcMain.handle("lan:regen-passcode", async () => {
-  lanMeta.passcode = generatePasscode()
-  persistLanMeta()
-  if (lanServer) lanServer.setPasscode(lanMeta.passcode)
-  return getLanStatus()
-})
-
-// Diagnose why a phone can't connect: fetch /api/info over the laptop's own
-// LAN address. If localhost works but the LAN IP fails, the Windows Firewall
-// is almost certainly dropping inbound traffic on the sync port.
-ipcMain.handle("lan:self-test", async () => {
-  if (!lanServer) return { reachable: false, reason: "server-off" }
-  const port = lanServer.port
-  const ips = getLanIPs()
-  const probe = (host) =>
-    new Promise((resolve) => {
-      const req = http.get(
-        `http://${host}:${port}/api/info`,
-        { timeout: 3000, headers: { "X-ProFlow-Client": "proflow-cap" } },
-        (res) => {
-          res.resume()
-          resolve(res.statusCode === 200)
-        },
-      )
-      req.on("error", () => resolve(false))
-      req.on("timeout", () => {
-        req.destroy()
-        resolve(false)
-      })
-    })
-  const local = await probe("127.0.0.1")
-  // Probe every LAN address in parallel — the diagnosis doesn't depend on
-  // order, and sequential 3s timeouts could hang the button for 10s+ when
-  // several virtual adapters are unroutable.
-  const results = await Promise.all(ips.map(async (ip) => ({ ip, ok: await probe(ip) })))
-  const ok = results.find((r) => r.ok)
-  const testedIp = ok ? ok.ip : null
-  if (!local) return { reachable: false, reason: "local-down", testedIp }
-  if (!ok) return { reachable: false, reason: "firewall", testedIp, ips }
-  return { reachable: true, testedIp, ips }
-})
-
 // ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(async () => {
-  const win = createWindow()
-
-  // The LAN server is (re)started by the renderer on startup if the user had
-  // it enabled — the preference lives in the renderer's localStorage and is
-  // replayed through lan:set-enabled once the window loads.
+  createWindow()
 
   // Wire electron-updater events → renderer and check for updates on launch
   // (production only, after a short delay so the app opens instantly).

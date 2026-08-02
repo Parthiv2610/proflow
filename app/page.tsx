@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Loader2, Minimize2, Smartphone } from "lucide-react"
+import { Minimize2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { CaptureDialog } from "@/components/proflow/capture-dialog"
 import { CommandPalette } from "@/components/proflow/command-palette"
@@ -133,80 +133,8 @@ function Workspace() {
       />
       <CommandPalette open={paletteOpen} onClose={closePalette} onCapture={handleCapture} />
       <WelcomeTour />
-      <LanPasscodeGate />
       {/* Confetti + badge popup when an achievement milestone is crossed */}
       <MilestonePopup />
-    </div>
-  )
-}
-
-/**
- * First-time phone connect: the Android APK is linked to the laptop over
- * Wi-Fi. Ask for the 6-digit passcode shown on the laptop before syncing.
- */
-function LanPasscodeGate() {
-  const { lanInfo, lanAuthed, lanGateOpen, closeLanGate, submitLanPasscode } = useStore()
-  const [code, setCode] = useState("")
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  if (lanInfo?.mode !== "cap" || lanAuthed || !lanGateOpen) return null
-
-  const submit = async () => {
-    setBusy(true)
-    const result = await submitLanPasscode(code)
-    setBusy(false)
-    setError(
-      result === "wrong-code"
-        ? "That code didn't work — check the laptop's screen and try again."
-        : result === "unreachable"
-          ? "Can't reach the laptop right now. Make sure ProFlow is open on it and both devices are on the same Wi-Fi."
-          : null,
-    )
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-md">
-      <div className="animate-in fade-in zoom-in-95 duration-200 w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl">
-        <div className="flex size-11 items-center justify-center rounded-xl bg-primary/15 text-primary">
-          <Smartphone className="size-5" />
-        </div>
-        <h2 className="mt-3 text-lg font-semibold text-foreground">Connect to your laptop</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          This app is linked to your ProFlow laptop on the same Wi-Fi. Enter the 6-digit code shown under{" "}
-          <span className="font-medium text-foreground">Settings → LAN Sync</span> on the laptop.
-        </p>
-        <input
-          value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-          placeholder="••••••"
-          inputMode="numeric"
-          autoFocus
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && code.length === 6) submit()
-          }}
-          className="mt-4 w-full rounded-lg border border-border bg-secondary/40 px-3 py-2.5 text-center font-mono text-2xl tracking-[0.5em] text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
-        />
-        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            onClick={submit}
-            disabled={busy || code.length !== 6}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
-          >
-            {busy && <Loader2 className="size-4 animate-spin" />}
-            Connect
-          </button>
-          <button
-            type="button"
-            onClick={closeLanGate}
-            className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            Not now
-          </button>
-        </div>
-      </div>
     </div>
   )
 }

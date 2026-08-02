@@ -15,7 +15,7 @@ import {
   TriangleAlert,
   Zap,
 } from "lucide-react"
-import { cn, timeAgo } from "@/lib/utils"
+import { cn } from "@/lib/utils"
 import { DragSortContainer, DragSortItem } from "../drag-sort"
 import { FocusChart } from "../focus-chart"
 import { EncouragementCard } from "../encouragement"
@@ -85,15 +85,7 @@ export function Dashboard() {
       hour12: true,
     })
   }
-  const { tasks, habits, goals, events, notes, setView, cycleTaskStatus, deleteTask, reorderTasks, toggleHabit, userName, lanInfo, lanAuthed, lanOnline, lastSyncedAt, focusLog, streakShields } = useStore()
-
-  const syncIndicator = useMemo(() => {
-    const active =
-      (lanInfo?.mode === "electron" && lanInfo.enabled) || (lanInfo?.mode === "cap" && lanAuthed)
-    if (!active) return { text: "Local only", dot: "bg-muted" }
-    if (lanInfo?.mode === "cap" && !lanOnline) return { text: "Laptop offline", dot: "bg-warning" }
-    return { text: `Synced ${timeAgo(lastSyncedAt)}`, dot: "bg-success" }
-  }, [lanInfo, lanAuthed, lanOnline, lastSyncedAt])
+  const { tasks, habits, goals, events, notes, setView, cycleTaskStatus, deleteTask, reorderTasks, toggleHabit, userName, focusLog, streakShields } = useStore()
 
   const done = tasks.filter((t) => t.status === "done").length
   const total = tasks.length
@@ -167,15 +159,7 @@ export function Dashboard() {
             <span className="text-danger">{overdue.length} overdue</span>
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setView("settings")}
-          className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          title="Sync settings"
-        >
-          {syncIndicator.text}
-          <span className={cn("size-2 rounded-full", syncIndicator.dot)} />
-        </button>
+
       </div>
 
       <div className="flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-card p-1">

@@ -16,16 +16,4 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("update:status", listener)
     return () => ipcRenderer.removeListener("update:status", listener)
   },
-
-  // LAN Sync
-  lanGetStatus: () => ipcRenderer.invoke("lan:get-status"),
-  lanSetEnabled: (enabled) => ipcRenderer.invoke("lan:set-enabled", enabled),
-  lanPush: (snapshot) => ipcRenderer.invoke("lan:push", snapshot),
-  lanRegenPasscode: () => ipcRenderer.invoke("lan:regen-passcode"),
-  lanSelfTest: () => ipcRenderer.invoke("lan:self-test"),
-  onLanRemote: (callback) => {
-    const listener = (_event, data) => callback(data)
-    ipcRenderer.on("lan:remote", listener)
-    return () => ipcRenderer.removeListener("lan:remote", listener)
-  },
 })
