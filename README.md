@@ -27,8 +27,7 @@ Track tasks, habits, goals, calendar events, and deep work sessions — all in o
 | 🧘 **Focus Mode** | Distraction-free mode hiding sidebar and topbar |
 | 🎉 **Welcome Tour** | 8-step onboarding overlay on first visit |
 | 💡 **Tooltip Hints** | Gentle sidebar tooltips for the first few sessions |
-| 📶 **LAN Sync** | Use the app on your phone over Wi-Fi — no account or internet needed |
-| 📱 **Scan-to-Connect QR** | Each laptop shows a QR code so your phone opens the right address instantly |
+| 📶 **LAN Sync** | Native apps only — link the Android app to your laptop over Wi-Fi, no account or internet needed |
 | 💾 **Local Persistence** | All data saves to localStorage — survives reloads |
 
 ---

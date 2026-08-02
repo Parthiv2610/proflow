@@ -957,7 +957,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     () =>
       lanInfo?.mode === "electron"
         ? !!lanInfo.enabled
-        : lanInfo?.mode === "phone" || lanInfo?.mode === "cap"
+        : lanInfo?.mode === "cap"
           ? lanAuthed
           : false,
     [lanInfo, lanAuthed],
@@ -1237,7 +1237,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       if (lanInfo?.mode === "electron") {
         const api = (window as any).electronAPI
         ok = api?.lanPush ? await api.lanPush(snapRef.current) : false
-      } else if (lanInfo?.mode === "phone" || lanInfo?.mode === "cap") {
+      } else if (lanInfo?.mode === "cap") {
         ok = await lanPushSnapshot(snapRef.current)
       }
     } catch {
@@ -1325,7 +1325,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       }
       return
     }
-    if (lanInfo?.mode === "phone" || lanInfo?.mode === "cap") {
+    if (lanInfo?.mode === "cap") {
       if (lanAuthed) {
         // The first poll already performs the catch-up push (prevReachableRef
         // starts false), so no extra timer is needed here.
@@ -1345,10 +1345,10 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       setLanInfo(info)
       if (info.mode === "electron") {
         if (getStoredEnabled() && !info.enabled) enableLan()
-      } else if (info.mode === "phone" || (info.mode === "cap" && info.url)) {
-        // Phone is always served by the laptop; the APK only connects once a
-        // laptop URL is configured — so don't pop the passcode gate on a fresh
-        // install before the user has linked a laptop.
+      } else if (info.mode === "cap" && info.url) {
+        // The APK only connects once a laptop URL is configured — so don't pop
+        // the passcode gate on a fresh install before the user has linked a
+        // laptop.
         lanPull().then(({ authed }) => {
           if (cancelled) return
           setLanAuthed(authed)

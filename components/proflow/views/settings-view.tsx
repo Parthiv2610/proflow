@@ -18,7 +18,6 @@ import {
   Upload,
   FileJson,
 } from "lucide-react"
-import QRCode from "react-qr-code"
 import { cn, timeAgo } from "@/lib/utils"
 import { getStoredLaptopUrl } from "@/lib/lan-sync"
 import { useUpdate } from "@/lib/use-update"
@@ -443,10 +442,10 @@ export function SettingsView() {
         )}
       </Card>
 
-      {/* LAN Sync — phone access */}
+      {/* LAN Sync — native phone app access */}
       <Card className="mt-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          LAN Sync — phone access
+          LAN Sync — phone app access
         </h2>
         <LanSyncCard />
       </Card>
@@ -651,56 +650,6 @@ function LanSyncCard() {
     )
   }
 
-  // ── Phone view (this page was served by the laptop over Wi-Fi) ──
-  if (lanInfo?.mode === "phone") {
-    return (
-      <div className="mt-4 space-y-3">
-        <div
-          className={cn(
-            "flex items-center gap-3 rounded-lg border p-3",
-            lanOnline ? "border-success/30 bg-success/5" : "border-warning/30 bg-warning/5",
-          )}
-        >
-          {lanOnline ? (
-            <Wifi className="size-5 shrink-0 text-success" />
-          ) : (
-            <WifiOff className="size-5 shrink-0 text-warning" />
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground">
-              {lanOnline ? "Connected to your laptop" : "Laptop offline"}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {lanOnline
-                ? `Synced ${timeAgo(lastSyncedAt)} · host: ${lanInfo?.host || lanInfo?.ip || "laptop"}`
-                : "Keep ProFlow open on your laptop and both devices on the same Wi-Fi."}
-            </p>
-          </div>
-        </div>
-
-        {lanAuthed ? (
-          <button
-            type="button"
-            onClick={disconnectPhone}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-danger/40 hover:bg-danger/10 hover:text-danger"
-          >
-            <Unlink className="size-3.5" />
-            Disconnect from laptop
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={openLanGate}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            <Smartphone className="size-3.5" />
-            Enter passcode to sync
-          </button>
-        )}
-      </div>
-    )
-  }
-
   // ── Laptop view (desktop app — hosts the server) ──
   const enabled = !!lanInfo?.enabled
 
@@ -733,12 +682,6 @@ function LanSyncCard() {
               Open this on your phone
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-4">
-              {/* QR code — dark-on-light so every phone camera scans it easily */}
-              {lanInfo?.url && (
-                <div className="shrink-0 rounded-xl bg-white p-2 shadow-sm">
-                  <QRCode value={lanInfo.url} size={132} bgColor="#ffffff" fgColor="#120d1f" title={`ProFlow — ${lanInfo.url}`} />
-                </div>
-              )}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <code className="min-w-0 flex-1 truncate rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm text-foreground">
@@ -754,9 +697,11 @@ function LanSyncCard() {
                   </button>
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Scan it with your phone&apos;s camera (or type the address). If Windows Firewall asks, click{" "}
+                  On your phone, open the <span className="font-medium text-foreground">ProFlow app</span> and go to{" "}
+                  <span className="font-medium text-foreground">Settings → LAN Sync</span>, then type this address to link
+                  it to this laptop. If Windows Firewall asks, click{" "}
                   <span className="font-medium text-foreground">Allow</span>. On networks with several ProFlow
-                  laptops, each shows its own QR — scan the one on this screen.
+                  laptops, each shows its own address — use the one on this screen.
                 </p>
                 {(lanInfo?.ips?.length || 0) > 1 && (
                   <div className="mt-3">

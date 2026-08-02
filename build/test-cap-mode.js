@@ -3,7 +3,9 @@
 // The APK (Capacitor WebView) does NOT load the app from the laptop — it loads
 // the local bundle and syncs against the laptop's absolute LAN URL via
 // lib/lan-sync.ts: lanPull()/lanPushSnapshot() fetch `${laptopUrl}/api/state`
-// with an `X-ProFlow-Passcode` header. That is a CROSS-ORIGIN fetch (WebView
+// with `X-ProFlow-Client: proflow-cap` (the native-app marker the server
+// requires) plus the `X-ProFlow-Passcode`. Browsers without the marker get
+// 403 and are never served the web app. That is a CROSS-ORIGIN fetch (WebView
 // origin vs. http://192.168.x.x:5174), so CORS preflight must pass too.
 //
 // Run: node .freebuff/test-cap-mode.js
@@ -30,18 +32,28 @@ async function main() {
     onRemoteChange: () => remoteChanges++,
   })
   const base = `http://127.0.0.1:${lan.port}` // what the APK stores as its laptop URL
-  const h = { "X-ProFlow-Passcode": PASSCODE, Origin: ORIGIN }
+  // The APK (Capacitor WebView) sends the native-client marker on every call;
+  // browsers don't have it and are rejected.
+  const marker = { "X-ProFlow-Client": "proflow-cap" }
+  const h = { ...marker, "X-ProFlow-Passcode": PASSCODE, Origin: ORIGIN }
 
   console.log("\n=== CAP-MODE END-TO-END (fresh export + real LAN server) ===\n")
 
-  console.log("1. Static index.html is served from the FRESH export (not a stub)")
+  console.log("1. Browsers are NOT served the web app — they get the native-only notice")
   let res = await fetch(`${base}/`)
   assert.strictEqual(res.status, 200)
   assert.strictEqual(res.headers.get("x-proflow-lan"), "1")
   const html = await res.text()
-  assert.ok(html.includes("self.__next_f"), "fresh export has RSC flight data")
-  assert.ok(html.includes("ProFlow"), "fresh export has the app shell")
-  console.log("   OK - fresh hydrated export served, x-proflow-lan header set")
+  assert.ok(html.includes("LAN-sync endpoint"), "notice page shown to browsers")
+  assert.ok(!html.includes("self.__next_f"), "the APK never loads the app from the laptop")
+  console.log("   OK - browser blocked; APK uses its own bundled assets")
+
+  console.log("1b. Browsers cannot call the API without the native marker")
+  res = await fetch(`${base}/api/state`, {
+    headers: { "X-ProFlow-Passcode": PASSCODE, Origin: ORIGIN },
+  })
+  assert.strictEqual(res.status, 403, "missing X-ProFlow-Client marker -> 403")
+  console.log("   OK - 403 native-app-only without the marker")
 
   console.log("2. CORS preflight (OPTIONS) for the WebView origin passes")
   res = await fetch(`${base}/api/state`, {
@@ -49,18 +61,15 @@ async function main() {
     headers: {
       Origin: ORIGIN,
       "Access-Control-Request-Method": "GET",
-      "Access-Control-Request-Headers": "content-type,x-proflow-passcode",
+      "Access-Control-Request-Headers": "content-type,x-proflow-passcode,x-proflow-client",
     },
   })
   assert.strictEqual(res.status, 204)
   assert.strictEqual(res.headers.get("access-control-allow-origin"), "*")
   // Header VALUES are case-preserved by undici — compare case-insensitively.
-  assert.ok(
-    (res.headers.get("access-control-allow-headers") || "")
-      .toLowerCase()
-      .includes("x-proflow-passcode"),
-    "passcode header allowed",
-  )
+  const allowedHeaders = (res.headers.get("access-control-allow-headers") || "").toLowerCase()
+  assert.ok(allowedHeaders.includes("x-proflow-passcode"), "passcode header allowed")
+  assert.ok(allowedHeaders.includes("x-proflow-client"), "native-client marker header allowed")
   // Chrome Private Network Access: localhost WebView -> private laptop IP needs
   // this header, or the real APK's fetch is blocked before CORS even applies.
   assert.strictEqual(
@@ -71,13 +80,13 @@ async function main() {
   console.log("   OK - CORS * + passcode header allowed + PNA true")
 
   console.log("3. GET /api/state without passcode -> 401 (APK not yet authed)")
-  res = await fetch(`${base}/api/state`, { headers: { Origin: ORIGIN } })
+  res = await fetch(`${base}/api/state`, { headers: { ...marker, Origin: ORIGIN } })
   assert.strictEqual(res.status, 401)
   console.log("   OK - 401")
 
   console.log("4. GET with WRONG passcode -> 401 (submitLanPasscode -> 'wrong-code')")
   res = await fetch(`${base}/api/state`, {
-    headers: { "X-ProFlow-Passcode": "000000", Origin: ORIGIN },
+    headers: { ...marker, "X-ProFlow-Passcode": "000000", Origin: ORIGIN },
   })
   assert.strictEqual(res.status, 401)
   console.log("   OK - 401")

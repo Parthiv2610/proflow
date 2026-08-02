@@ -315,10 +315,14 @@ ipcMain.handle("lan:self-test", async () => {
   const ips = getLanIPs()
   const probe = (host) =>
     new Promise((resolve) => {
-      const req = http.get(`http://${host}:${port}/api/info`, { timeout: 3000 }, (res) => {
-        res.resume()
-        resolve(res.statusCode === 200)
-      })
+      const req = http.get(
+        `http://${host}:${port}/api/info`,
+        { timeout: 3000, headers: { "X-ProFlow-Client": "proflow-cap" } },
+        (res) => {
+          res.resume()
+          resolve(res.statusCode === 200)
+        },
+      )
       req.on("error", () => resolve(false))
       req.on("timeout", () => {
         req.destroy()

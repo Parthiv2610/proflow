@@ -89,9 +89,9 @@ export function Dashboard() {
 
   const syncIndicator = useMemo(() => {
     const active =
-      (lanInfo?.mode === "electron" && lanInfo.enabled) || (lanInfo?.mode === "phone" && lanAuthed)
+      (lanInfo?.mode === "electron" && lanInfo.enabled) || (lanInfo?.mode === "cap" && lanAuthed)
     if (!active) return { text: "Local only", dot: "bg-muted" }
-    if (lanInfo?.mode === "phone" && !lanOnline) return { text: "Laptop offline", dot: "bg-warning" }
+    if (lanInfo?.mode === "cap" && !lanOnline) return { text: "Laptop offline", dot: "bg-warning" }
     return { text: `Synced ${timeAgo(lastSyncedAt)}`, dot: "bg-success" }
   }, [lanInfo, lanAuthed, lanOnline, lastSyncedAt])
 

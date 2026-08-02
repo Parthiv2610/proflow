@@ -141,8 +141,8 @@ function Workspace() {
 }
 
 /**
- * First-time phone connect: this page is served by the laptop over Wi-Fi.
- * Ask for the 6-digit passcode shown on the laptop before syncing.
+ * First-time phone connect: the Android APK is linked to the laptop over
+ * Wi-Fi. Ask for the 6-digit passcode shown on the laptop before syncing.
  */
 function LanPasscodeGate() {
   const { lanInfo, lanAuthed, lanGateOpen, closeLanGate, submitLanPasscode } = useStore()
@@ -150,7 +150,7 @@ function LanPasscodeGate() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  if ((lanInfo?.mode !== "phone" && lanInfo?.mode !== "cap") || lanAuthed || !lanGateOpen) return null
+  if (lanInfo?.mode !== "cap" || lanAuthed || !lanGateOpen) return null
 
   const submit = async () => {
     setBusy(true)
@@ -173,9 +173,7 @@ function LanPasscodeGate() {
         </div>
         <h2 className="mt-3 text-lg font-semibold text-foreground">Connect to your laptop</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          {lanInfo?.mode === "cap"
-            ? "This app is linked to your ProFlow laptop on the same Wi-Fi. Enter the 6-digit code shown under"
-            : "This page is being served by your ProFlow laptop on the same Wi-Fi. Enter the 6-digit code shown under"}{" "}
+          This app is linked to your ProFlow laptop on the same Wi-Fi. Enter the 6-digit code shown under{" "}
           <span className="font-medium text-foreground">Settings → LAN Sync</span> on the laptop.
         </p>
         <input

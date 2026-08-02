@@ -22,25 +22,35 @@ async function main() {
     onRemoteChange: () => remoteChanges++,
   })
   const base = `http://127.0.0.1:${lan.port}`
-  const headers = { "X-ProFlow-Passcode": "123456" }
+  // Native clients must send the marker header — browsers are rejected.
+  const marker = { "X-ProFlow-Client": "proflow-cap" }
+  const headers = { ...marker, "X-ProFlow-Passcode": "123456" }
 
-  console.log("1. static index.html + LAN header")
+  console.log("1. browser gets a native-only notice, NOT the web app")
   let res = await fetch(`${base}/`)
   assert.strictEqual(res.headers.get("x-proflow-lan"), "1")
-  assert.ok((await res.text()).includes("ProFlow test"))
+  const notice = await res.text()
+  assert.ok(notice.includes("LAN-sync endpoint"), "notice page, not the app")
+  assert.ok(!notice.includes("ProFlow test"), "the web app is never served to browsers")
 
-  console.log("2. /api/info identifies the LAN server")
+  console.log("1b. browsers cannot call the sync API (no marker header)")
+  res = await fetch(`${base}/api/state`, { headers: { "X-ProFlow-Passcode": "123456" } })
+  assert.strictEqual(res.status, 403, "missing marker -> 403 native-app-only")
   res = await fetch(`${base}/api/info`)
+  assert.strictEqual(res.status, 403, "/api/info also requires the marker")
+
+  console.log("2. /api/info identifies the LAN server (native marker)")
+  res = await fetch(`${base}/api/info`, { headers: marker })
   assert.strictEqual(res.headers.get("x-proflow-lan"), "1")
   const info = await res.json()
   assert.strictEqual(info.lan, true)
 
-  console.log("3. /api/state without passcode -> 401")
-  res = await fetch(`${base}/api/state`)
+  console.log("3. /api/state without passcode -> 401 (marker present, no passcode)")
+  res = await fetch(`${base}/api/state`, { headers: marker })
   assert.strictEqual(res.status, 401)
 
   console.log("4. /api/state with wrong passcode -> 401")
-  res = await fetch(`${base}/api/state`, { headers: { "X-ProFlow-Passcode": "000000" } })
+  res = await fetch(`${base}/api/state`, { headers: { ...marker, "X-ProFlow-Passcode": "000000" } })
   assert.strictEqual(res.status, 401)
 
   console.log("5. authed GET returns empty state")
@@ -98,9 +108,11 @@ async function main() {
   assert.strictEqual(persisted.data.collections.tasks.v, 200)
   assert.strictEqual(persisted.passcode, "123456")
 
-  console.log("11. path traversal blocked")
+  console.log("11. non-API paths always return the notice (never files)")
   res = await fetch(`${base}/..%2f..%2f..%2fWindows%2fwin.ini`)
-  assert.ok([400, 403, 404].includes(res.status))
+  assert.strictEqual(res.status, 200)
+  const body = await res.text()
+  assert.ok(body.includes("LAN-sync endpoint"), "no file leak — always the notice")
 
   console.log("12. mergeIncoming (laptop push) persists without broadcast")
   const changed = lan.mergeIncoming({

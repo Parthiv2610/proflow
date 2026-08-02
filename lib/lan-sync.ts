@@ -3,15 +3,17 @@
 /**
  * Renderer-side LAN sync support.
  *
- * Four possible modes:
+ * LAN sync is native-app-only (laptop EXE ↔ phone APK):
  *  - "electron" — running inside the desktop app. The laptop hosts the LAN
  *    server; the renderer talks to it through IPC (preload bridge).
- *  - "phone"    — this page was served by the laptop's LAN server (phone
- *    browser on the same Wi-Fi). Syncs by polling the same origin's API.
  *  - "cap"      — running inside the Android APK (Capacitor WebView). The app
  *    is NOT served by the laptop, so it stores the laptop's LAN URL and syncs
- *    against that absolute URL.
+ *    against that absolute URL, tagging every request with the native-client
+ *    marker the LAN server requires.
  *  - "none"     — plain web (e.g. Vercel) or dev — no LAN sync.
+ *
+ * Browsers are deliberately excluded: the LAN server never serves the app and
+ * rejects API calls without the marker header below.
  */
 
 export type SyncSnapshot = {
@@ -19,7 +21,7 @@ export type SyncSnapshot = {
 }
 
 export type LanInfo = {
-  mode: "electron" | "phone" | "cap" | "none"
+  mode: "electron" | "cap" | "none"
   enabled: boolean
   url: string | null
   ip: string | null
@@ -33,6 +35,10 @@ export type LanInfo = {
 const PASSCODE_KEY = "proflow-lan-code"
 const ENABLED_KEY = "proflow-lan-enabled"
 const LAPTOP_URL_KEY = "proflow-laptop-url"
+
+// Marker only the native Android APK sends — the LAN server rejects any
+// request without it, so a browser can never call the sync API.
+const CLIENT_MARKER = "proflow-cap"
 
 export function getStoredPasscode(): string {
   try {
@@ -160,31 +166,8 @@ export async function detectLan(): Promise<LanInfo | null> {
     return buildCapLanInfo(getStoredLaptopUrl())
   }
 
-  // 3) Phone/browser served by the laptop's LAN server
-  try {
-    const res = await fetch("/api/info", { cache: "no-store" })
-    if (res.headers.get("x-proflow-lan") === "1") {
-      let host: string | null = null
-      try {
-        const info = await res.json()
-        host = info?.host || null
-      } catch {
-        // header is enough
-      }
-      return {
-        mode: "phone",
-        enabled: true,
-        url: window.location.origin,
-        ip: window.location.hostname,
-        port: Number(window.location.port) || 5174,
-        passcode: getStoredPasscode() || null,
-        host,
-      }
-    }
-  } catch {
-    // not served by our server — not LAN mode
-  }
-
+  // Anything else (plain web / dev / browser) — no LAN sync. The app is never
+  // served by the laptop, so there is no "phone browser" mode anymore.
   return null
 }
 
@@ -199,7 +182,7 @@ export async function lanPull(): Promise<PullResult> {
     // don't fall back to a same-origin fetch (the WebView has no LAN server).
     if (isCapacitor() && !base) return { snap: null, authed: false, reachable: false }
     const res = await fetch(`${base}/api/state`, {
-      headers: { "X-ProFlow-Passcode": code },
+      headers: { "X-ProFlow-Client": CLIENT_MARKER, "X-ProFlow-Passcode": code },
       cache: "no-store",
     })
     if (res.status === 401) return { snap: null, authed: false, reachable: true }
@@ -223,7 +206,11 @@ export async function lanPushSnapshot(snap: SyncSnapshot): Promise<boolean> {
     if (isCapacitor() && !base) return false
     const res = await fetch(`${base}/api/state`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-ProFlow-Passcode": code },
+      headers: {
+        "Content-Type": "application/json",
+        "X-ProFlow-Client": CLIENT_MARKER,
+        "X-ProFlow-Passcode": code,
+      },
       body: JSON.stringify(snap),
       cache: "no-store",
     })

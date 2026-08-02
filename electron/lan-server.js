@@ -1,46 +1,47 @@
 // ProFlow LAN Sync Server
 // -------------------------
-// Serves the built web app (out/) over WiFi AND exposes a tiny sync API so a
-// phone on the same network can share data with this laptop — no accounts,
-// no internet. Pure Node (no Electron imports) so it can be unit-tested
-// standalone.
+// Exposes a tiny sync API so the ProFlow Android app (APK) on the same Wi-Fi
+// can share data with this laptop — no accounts, no internet. NATIVE APPS
+// ONLY: the laptop EXE talks over IPC, the phone APK over HTTP. Browsers are
+// deliberately not supported — they get a small notice instead of the web app,
+// and the API rejects any request without the native-client marker header.
+// Pure Node (no Electron imports) so it can be unit-tested standalone.
 //
 // API:
-//   GET  /api/info          -> { lan: true, host, ip, port }   (no auth)
-//   GET  /api/state         -> { collections: {...} }          (passcode)
-//   POST /api/state         -> merge snapshot (passcode)
-//   anything else           -> static files from out/, index.html fallback
+//   GET  /api/info          -> { lan: true, host, ip, port }   (client marker)
+//   GET  /api/state         -> { collections: {...} }          (marker + passcode)
+//   POST /api/state         -> merge snapshot (marker + passcode)
+//   anything else           -> native-app-only notice (never the web app)
 //
-// Auth: every /api/state call must send `X-ProFlow-Passcode: <code>`.
-// An empty passcode means "no passcode required".
+// Auth: every request must send `X-ProFlow-Client: proflow-cap` — the marker
+// only the native APK sends. Every /api/state call must ALSO send
+// `X-ProFlow-Passcode: <code>`. An empty passcode means "no passcode required".
 
 const http = require("http")
 const fs = require("fs")
 const path = require("path")
 const os = require("os")
 
-const MIME = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".svg": "image/svg+xml",
-  ".webp": "image/webp",
-  ".ico": "image/x-icon",
-  ".txt": "text/plain; charset=utf-8",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".xml": "text/xml; charset=utf-8",
-}
-
 const MAX_BODY = 10 * 1024 * 1024 // 10 MB state snapshots
+
+// LAN sync is native-app-only. The Android APK (Capacitor WebView) sends this
+// marker header on every request; the laptop EXE talks over IPC instead.
+// Browsers never send it, so they're rejected before passcode auth even
+// applies — a browser can neither load the app nor call the sync API.
+const CLIENT_HEADER = "x-proflow-client"
+const CLIENT_VALUE = "proflow-cap"
+
+const isNativeClient = (req) => req.headers[CLIENT_HEADER] === CLIENT_VALUE
+
+// What a browser visiting the laptop's LAN address sees — a short notice, and
+// nothing else. The web app is never served over the network.
+const NOTICE_HTML = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ProFlow</title>
+<style>body{font-family:system-ui,sans-serif;background:#120d1f;color:#e7e2f5;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center}div{max-width:420px;padding:24px}h1{font-size:22px;margin:0 0 8px}p{font-size:14px;line-height:1.5;color:#b6aed0;margin:0}</style>
+</head>
+<body><div><h1>ProFlow</h1><p>This is a ProFlow LAN-sync endpoint. Open the ProFlow app on your phone (Settings → LAN Sync) and enter the address shown on your laptop to connect.</p></div></body></html>`
 
 // Adapter names that are almost never the Wi-Fi/LAN a phone could reach:
 // virtual machines, containers, VPNs and tunnel adapters. Windows names
@@ -146,7 +147,7 @@ function mergeState(current, incoming) {
  *
  * @param {object} opts
  * @param {number} opts.port        preferred port (bumps up if taken)
- * @param {string} opts.outDir      directory with the built web app
+ * @param {string} opts.outDir      kept for API compatibility (no longer served)
  * @param {string} opts.stateFile   JSON file persisting {passcode, data}
  * @param {string} opts.passcode    passcode to require ("" = none)
  * @param {(state: object) => void} [opts.onRemoteChange] called when a POST
@@ -155,8 +156,6 @@ function mergeState(current, incoming) {
  */
 function startLanServer(opts) {
   return new Promise((resolve, reject) => {
-    // Resolve once so the traversal guard works with absolute or relative paths.
-    const outDir = path.resolve(opts.outDir)
     const stateFile = opts.stateFile
     const passcodeRef = { current: opts.passcode || "" }
     const ip = getLanIPs()[0] || "localhost"
@@ -218,56 +217,14 @@ function startLanServer(opts) {
         req.on("error", reject)
       })
 
-    const resolvedOut = path.resolve(outDir)
-    const serveStatic = (req, res, url) => {
-      let filePath
-      try {
-        const decoded = decodeURIComponent(url.pathname)
-        const rel = decoded === "/" ? "index.html" : decoded.replace(/^\/+/, "")
-        // Reject any traversal segment outright.
-        if (rel.split("/").some((p) => p === "..")) {
-          sendJSON(res, 403, { error: "forbidden" })
-          return
-        }
-        filePath = path.normalize(path.join(outDir, rel))
-      } catch {
-        sendJSON(res, 400, { error: "bad path" })
-        return
-      }
-      // Path-traversal guard: resolved path must stay inside outDir (prefix+sep,
-      // not a bare prefix — otherwise a sibling "out_evil" directory would pass).
-      if (!filePath.startsWith(resolvedOut + path.sep) && filePath !== resolvedOut) {
-        sendJSON(res, 403, { error: "forbidden" })
-        return
-      }
-      let target = filePath
-      try {
-        if (!fs.existsSync(target) || fs.statSync(target).isDirectory()) {
-          // SPA fallback — unknown routes render the app shell.
-          target = path.join(outDir, "index.html")
-        }
-        const body = fs.readFileSync(target)
-        const ext = path.extname(target).toLowerCase()
-        res.writeHead(200, {
-          "Content-Type": MIME[ext] || "application/octet-stream",
-          "X-ProFlow-Lan": "1",
-          "Access-Control-Allow-Origin": "*",
-          "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=0",
-        })
-        res.end(body)
-      } catch {
-        sendJSON(res, 404, { error: "not found" })
-      }
-    }
-
     const server = http.createServer(async (req, res) => {
       // CORS preflight
       if (req.method === "OPTIONS") {
         res.writeHead(204, {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, X-ProFlow-Passcode",
-      "Access-Control-Allow-Private-Network": "true",
+          "Access-Control-Allow-Headers": "Content-Type, X-ProFlow-Passcode, X-ProFlow-Client",
+          "Access-Control-Allow-Private-Network": "true",
           "Access-Control-Max-Age": "86400",
         })
         res.end()
@@ -279,6 +236,22 @@ function startLanServer(opts) {
         url = new URL(req.url, `http://${req.headers.host || "localhost"}`)
       } catch {
         sendJSON(res, 400, { error: "bad url" })
+        return
+      }
+
+      // The sync API is reserved for the native Android app. Browsers get 403.
+      if (!isNativeClient(req)) {
+        if (url.pathname.startsWith("/api/")) {
+          sendJSON(res, 403, { error: "native-app-only" })
+          return
+        }
+        // Non-API paths: a small notice, never the web app.
+        res.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "X-ProFlow-Lan": "1",
+          "Cache-Control": "no-store",
+        })
+        res.end(NOTICE_HTML)
         return
       }
 
@@ -328,8 +301,14 @@ function startLanServer(opts) {
         return
       }
 
-      // Static files
-      serveStatic(req, res, url)
+      // Everything else (even a native client asking for the app): a notice,
+      // never the web app — LAN sync is laptop-EXE ↔ phone-APK only.
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "X-ProFlow-Lan": "1",
+        "Cache-Control": "no-store",
+      })
+      res.end(NOTICE_HTML)
     })
 
     const attemptListen = (port, triesLeft) => {
