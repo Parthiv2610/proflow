@@ -1,7 +1,7 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
-import { Plus, Search } from "lucide-react"
+import { useMemo, useState } from "react"
+import { FolderPlus, Plus, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { DragSortContainer, DragSortItem } from "../drag-sort"
@@ -16,30 +16,28 @@ const statusFilters: { id: TaskStatus | "all"; label: string }[] = [
   { id: "done", label: "Done" },
 ]
 
-export function TasksView({ onCapture }: { onCapture: () => void }) {
+// Accent tokens (globals.css) — the same family the calendar uses for events.
+const PROJECT_DOT_COLORS = ["primary", "info", "focus", "success", "danger"]
+
+/** Deterministic accent color for a project name — stable across renders/devices. */
+function projectColor(name: string) {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0
+  return PROJECT_DOT_COLORS[Math.abs(h) % PROJECT_DOT_COLORS.length]
+}
+
+export function TasksView({
+  onCapture,
+  onNewProject,
+}: {
+  onCapture: () => void
+  onNewProject: (name: string) => void
+}) {
   const { tasks, projects, search, setSearch, cycleTaskStatus, deleteTask, reorderTasks } = useStore()
   const [status, setStatus] = useState<TaskStatus | "all">("all")
-  const [project, setProject] = useState<string | "all">("all")
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return tasks.filter((t) => {
-      if (status !== "all" && t.status !== status) return false
-      if (project !== "all" && t.project !== project) return false
-      if (q && !`${t.title} ${t.project} ${t.category}`.toLowerCase().includes(q)) return false
-      return true
-    })
-  }, [tasks, status, project, search])
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, Task[]>()
-    for (const p of projects) map.set(p, [])
-    for (const t of filtered) {
-      if (!map.has(t.project)) map.set(t.project, [])
-      map.get(t.project)!.push(t)
-    }
-    return Array.from(map.entries()).filter(([, list]) => list.length > 0)
-  }, [filtered, projects])
+  // "all" shows every task; "" is the Inbox (tasks without a project); any other
+  // value is a specific project tab. Tasks are never mixed across tabs.
+  const [projectTab, setProjectTab] = useState<string>("all")
 
   const counts = {
     all: tasks.length,
@@ -48,15 +46,92 @@ export function TasksView({ onCapture }: { onCapture: () => void }) {
     done: tasks.filter((t) => t.status === "done").length,
   } as Record<string, number>
 
+  const tabs = useMemo(() => {
+    // "No project" is the home for standalone tasks (project === ""). It's
+    // labeled this way rather than "Inbox" so it can never collide with a
+    // project the user literally names "Inbox".
+    const list: { id: string; label: string; count: number; color?: string }[] = [
+      { id: "all", label: "All", count: tasks.length },
+      {
+        id: "",
+        label: "No project",
+        count: tasks.filter((t) => !t.project).length,
+        color: "muted-foreground",
+      },
+      ...projects.map((p) => ({
+        id: p,
+        label: p,
+        count: tasks.filter((t) => t.project === p).length,
+        color: projectColor(p),
+      })),
+    ]
+    // Keep the bar tidy: hide empty tabs (All always stays).
+    return list.filter((t) => t.id === "all" || t.count > 0)
+  }, [tasks, projects])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return tasks.filter((t) => {
+      if (status !== "all" && t.status !== status) return false
+      if (projectTab === "all") {
+        // no project filter — everything
+      } else if (projectTab === "") {
+        if (t.project) return false // Inbox: only tasks without a project
+      } else if (t.project !== projectTab) {
+        return false // specific project tab
+      }
+      if (q && !`${t.title} ${t.project} ${t.category}`.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [tasks, status, projectTab, search])
+
+  // On a single tab (Inbox or one project) show a flat list; on "All" group by
+  // project so each project is still its own section.
+  const single = projectTab !== "all"
+
+  const grouped = useMemo(() => {
+    if (single) return null
+    const map = new Map<string, Task[]>()
+    for (const p of projects) map.set(p, [])
+    map.set("", []) // Inbox group for tasks without a project
+    for (const t of filtered) {
+      if (!map.has(t.project)) map.set(t.project, [])
+      map.get(t.project)!.push(t)
+    }
+    return Array.from(map.entries())
+      .filter(([, list]) => list.length > 0)
+      .map(([proj, list]) => ({
+        project: proj === "" ? "No project" : proj,
+        color: proj === "" ? "muted-foreground" : projectColor(proj),
+        tasks: list,
+      }))
+  }, [filtered, projects, single])
+
+  const emptyState = (
+    <div className="rounded-2xl border border-dashed border-border p-12 text-center">
+      <p className="text-sm text-muted-foreground">No tasks match your filters.</p>
+    </div>
+  )
+
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6">
       <PageHeader
         title="Tasks & Projects"
         subtitle={`${counts.todo + counts["in-progress"]} active · ${counts.done} completed · ${tasks.filter((t) => t.overdue && t.status !== "done").length} overdue`}
       >
-        <Button size="lg" onClick={onCapture} className="gap-1.5">
-          <Plus className="size-4" /> Add task
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={() => onNewProject(search.trim())}
+            className="gap-1.5"
+          >
+            <FolderPlus className="size-4" /> New project
+          </Button>
+          <Button size="lg" onClick={onCapture} className="gap-1.5">
+            <Plus className="size-4" /> Add task
+          </Button>
+        </div>
       </PageHeader>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -87,28 +162,63 @@ export function TasksView({ onCapture }: { onCapture: () => void }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <ProjectChip active={project === "all"} onClick={() => setProject("all")}>
-          All projects
-        </ProjectChip>
-        {projects.map((p) => (
-          <ProjectChip key={p} active={project === p} onClick={() => setProject(p)}>
-            {p}
-          </ProjectChip>
+      {/* Project tabs — one tab per project so tasks never mix */}
+      <div className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-card p-1">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setProjectTab(t.id)}
+            className={cn(
+              "flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+              projectTab === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t.color && (
+              // The ring keeps a primary-colored dot visible when its tab is
+              // active (the active tab background is also bg-primary).
+              <span
+                aria-hidden
+                className="size-2 shrink-0 rounded-full ring-1 ring-background/70"
+                style={{ backgroundColor: `var(--${t.color})` }}
+              />
+            )}
+            {t.label}
+            <span
+              className={cn(
+                "text-xs",
+                projectTab === t.id ? "text-primary-foreground/70" : "text-muted-foreground",
+              )}
+            >
+              {t.count}
+            </span>
+          </button>
         ))}
       </div>
 
-      {grouped.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border p-12 text-center">
-          <p className="text-sm text-muted-foreground">No tasks match your filters.</p>
-        </div>
+      {single ? (
+        filtered.length === 0 ? (
+          emptyState
+        ) : (
+          <TaskGroup
+            project={projectTab === "" ? "No project" : projectTab}
+            color={projectTab === "" ? "muted-foreground" : projectColor(projectTab)}
+            tasks={filtered}
+            onToggle={(id) => cycleTaskStatus(id)}
+            onDelete={(id) => deleteTask(id)}
+            onReorder={(ids) => reorderTasks(ids)}
+          />
+        )
+      ) : !grouped || grouped.length === 0 ? (
+        emptyState
       ) : (
         <div className="flex flex-col gap-6">
-          {grouped.map(([proj, list]) => (
+          {grouped.map((g) => (
             <TaskGroup
-              key={proj}
-              project={proj}
-              tasks={list}
+              key={g.project}
+              project={g.project}
+              color={g.color}
+              tasks={g.tasks}
               onToggle={(id) => cycleTaskStatus(id)}
               onDelete={(id) => deleteTask(id)}
               onReorder={(ids) => reorderTasks(ids)}
@@ -122,12 +232,14 @@ export function TasksView({ onCapture }: { onCapture: () => void }) {
 
 function TaskGroup({
   project,
+  color,
   tasks,
   onToggle,
   onDelete,
   onReorder,
 }: {
   project: string
+  color?: string
   tasks: Task[]
   onToggle: (id: string) => void
   onDelete: (id: string) => void
@@ -137,6 +249,13 @@ function TaskGroup({
   return (
     <section>
       <div className="mb-2 flex items-center gap-2">
+        {color && (
+          <span
+            aria-hidden
+            className="size-2 shrink-0 rounded-full ring-1 ring-background/70"
+            style={{ backgroundColor: `var(--${color})` }}
+          />
+        )}
         <h2 className="text-sm font-semibold text-foreground">{project}</h2>
         <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
           {tasks.length}
@@ -157,29 +276,3 @@ function TaskGroup({
     </section>
   )
 }
-
-function ProjectChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
-        active
-          ? "border-primary bg-primary/15 text-primary"
-          : "border-border bg-card text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
-  )
-}
-

@@ -27,7 +27,7 @@ const workspace: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, hint: "Overview of tasks, habits, goals & stats" },
   { id: "tasks", label: "Tasks & Projects", icon: ListTodo, hint: "Manage to-dos with drag & drop priorities" },
   { id: "calendar", label: "Calendar", icon: Calendar, hint: "Week & month view with time-block events" },
-  { id: "progress", label: "Progress", icon: Trophy, hint: "Level curve, badges, streaks & personal bests" },
+  { id: "progress", label: "Progress", icon: Trophy, hint: "Level curve, badges, streaks & weekly stats" },
 ]
 
 const tools: NavItem[] = [

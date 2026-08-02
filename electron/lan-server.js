@@ -85,10 +85,46 @@ function generatePasscode() {
   return String(Math.floor(100000 + Math.random() * 900000))
 }
 
+// Collections that can't use plain last-write-wins because both devices can
+// legitimately change them at the same time:
+//   - xpEvents / shieldEvents: event ledgers — union by id, so simultaneous
+//     earns on both devices are ALL kept (nothing lost) and each event is
+//     counted exactly once (never double-counted, since ids dedupe).
+//   - achievements: grow-only map (id → earned date) — union by key.
+//   - bestStreak / lastShieldMilestone: monotonic numbers — take the max.
+const GROW_ONLY_KEYS = new Set([
+  "xpEvents",
+  "shieldEvents",
+  "achievements",
+  "bestStreak",
+  "lastShieldMilestone",
+])
+
+/** Union-merge one grow-only collection (each is {v, items}). */
+function mergeGrowOnly(key, current, incoming) {
+  const v = Math.max(current.v || 0, incoming.v || 0)
+  if (key === "bestStreak" || key === "lastShieldMilestone") {
+    return { v, items: Math.max(Number(current.items) || 0, Number(incoming.items) || 0) }
+  }
+  if (key === "achievements") {
+    return { v, items: { ...(current.items || {}), ...(incoming.items || {}) } }
+  }
+  // xpEvents / shieldEvents — event ledgers: union by item id, larger amount
+  // wins on a conflict (e.g. two devices each seeding their pre-sync balance).
+  const byId = new Map()
+  for (const x of [...(current.items || []), ...(incoming.items || [])]) {
+    if (!x || x.id == null) continue
+    const prev = byId.get(x.id)
+    if (!prev || (Number(x.amount) || 0) > (Number(prev.amount) || 0)) byId.set(x.id, x)
+  }
+  return { v, items: [...byId.values()] }
+}
+
 /**
  * Merge an incoming snapshot into the current state.
  * Per-collection last-write-wins: the collection with the higher `v` wins;
- * on a tie the incoming copy wins (it is the freshest write).
+ * on a tie the incoming copy wins (it is the freshest write). The grow-only
+ * collections above bypass LWW and merge instead.
  */
 function mergeState(current, incoming) {
   const cur = current && current.collections ? current.collections : {}
@@ -99,6 +135,7 @@ function mergeState(current, incoming) {
     const i = inc[key]
     if (!c) merged[key] = i
     else if (!i) merged[key] = c
+    else if (GROW_ONLY_KEYS.has(key)) merged[key] = mergeGrowOnly(key, c, i)
     else merged[key] = i.v >= c.v ? i : c
   }
   return { collections: merged }

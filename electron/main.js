@@ -139,7 +139,7 @@ async function setLanEnabled(enabled) {
         outDir: path.join(__dirname, "..", "out"),
         stateFile: LAN_STATE_FILE(),
         passcode: lanMeta.passcode,
-        onRemoteChange: (merged) => broadcastToRenderer({ type: "snapshot", snapshot: merged }),
+        onRemoteChange: (merged) => broadcastToRenderer(merged),
       })
       return getLanStatus()
     } catch (err) {

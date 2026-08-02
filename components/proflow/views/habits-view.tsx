@@ -99,7 +99,7 @@ export function HabitsView() {
             <p className="text-sm font-semibold">Streak Shields</p>
             <p className="text-xs text-muted-foreground">
               Miss a scheduled day and a shield keeps your streak alive — automatically. You can hold up to{" "}
-              <span className="font-medium text-focus">{MAX_SHIELDS}</span> at once. Shields and XP are per-device.
+              <span className="font-medium text-focus">{MAX_SHIELDS}</span> at once. Shields and XP stay in sync between your laptop and phone.
             </p>
             <p className="mt-1 text-[11px] font-medium text-focus/80">
               🎁 Free shield every {FREE_SHIELD_EVERY_LEVELS} levels — next at Level {nextFreeShieldLevel}

@@ -114,6 +114,75 @@ async function main() {
   state = await res.json()
   assert.strictEqual(state.collections.notes.v, 300)
 
+  const post = (collections) =>
+    fetch(`${base}/api/state`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ collections }),
+    })
+
+  console.log("13. xpEvents merge as a UNION — simultaneous earns are all kept, never double-counted")
+  // Laptop earns +10; phone earns +5 at the same time. Both must survive.
+  await post({ xpEvents: { v: 400, items: [{ id: "xp-a", amount: 10 }, { id: "seed", amount: 500 }] } })
+  await post({ xpEvents: { v: 500, items: [{ id: "xp-b", amount: 5 }, { id: "xp-a", amount: 10 }] } })
+  res = await fetch(`${base}/api/state`, { headers })
+  state = await res.json()
+  const xpEvents = state.collections.xpEvents.items
+  assert.strictEqual(xpEvents.length, 3, "seed + both earns survive")
+  const byId = Object.fromEntries(xpEvents.map((e) => [e.id, e.amount]))
+  assert.strictEqual(byId["xp-a"], 10)
+  assert.strictEqual(byId["xp-b"], 5)
+  assert.strictEqual(byId["seed"], 500)
+  assert.strictEqual(state.collections.xpEvents.v, 500, "version is the max of both pushes")
+
+  console.log("14. same event id echoed twice is deduped (never double-counted)")
+  await post({ xpEvents: { v: 600, items: [{ id: "xp-a", amount: 10 }, { id: "xp-b", amount: 5 }] } })
+  res = await fetch(`${base}/api/state`, { headers })
+  state = await res.json()
+  assert.strictEqual(state.collections.xpEvents.items.length, 3, "echo of existing events adds nothing")
+
+  console.log("15. conflicting seed ids keep the LARGER balance (pre-sync migration)")
+  await post({ xpEvents: { v: 700, items: [{ id: "seed", amount: 320 }] } })
+  res = await fetch(`${base}/api/state`, { headers })
+  state = await res.json()
+  const seed = state.collections.xpEvents.items.find((e) => e.id === "seed")
+  assert.strictEqual(seed.amount, 500, "larger pre-sync balance wins")
+
+  console.log("16. shieldEvents union dedupes deterministic use events (no double consumption)")
+  const useEvent = { id: "use:2026-08-01:h1", amount: -1 }
+  await post({ shieldEvents: { v: 100, items: [useEvent] } })
+  await post({ shieldEvents: { v: 200, items: [useEvent, { id: "buy-1", amount: 1 }] } })
+  res = await fetch(`${base}/api/state`, { headers })
+  state = await res.json()
+  const shieldEvents = state.collections.shieldEvents.items
+  assert.strictEqual(shieldEvents.length, 2, "both devices' use of the same missed day dedupes")
+  assert.ok(shieldEvents.some((e) => e.id === "buy-1"))
+
+  console.log("17. achievements merge as a grow-only map (badges from both devices kept)")
+  await post({ achievements: { v: 100, items: { "streak-3": "2026-08-01" } } })
+  await post({ achievements: { v: 200, items: { "tasks-10": "2026-08-02" } } })
+  res = await fetch(`${base}/api/state`, { headers })
+  state = await res.json()
+  assert.deepStrictEqual(state.collections.achievements.items, {
+    "streak-3": "2026-08-01",
+    "tasks-10": "2026-08-02",
+  })
+
+  console.log("18. bestStreak & lastShieldMilestone merge by MAX (monotonic)")
+  await post({ bestStreak: { v: 100, items: 21 }, lastShieldMilestone: { v: 100, items: 5 } })
+  await post({ bestStreak: { v: 200, items: 14 }, lastShieldMilestone: { v: 200, items: 10 } })
+  res = await fetch(`${base}/api/state`, { headers })
+  state = await res.json()
+  assert.strictEqual(state.collections.bestStreak.items, 21, "max wins even when the lower one is newer")
+  assert.strictEqual(state.collections.lastShieldMilestone.items, 10)
+
+  console.log("19. non-grow-only collections still last-write-wins")
+  await post({ lastHabitCheck: { v: 100, items: "2026-08-01" } })
+  await post({ lastHabitCheck: { v: 50, items: "2026-07-01" } })
+  res = await fetch(`${base}/api/state`, { headers })
+  state = await res.json()
+  assert.strictEqual(state.collections.lastHabitCheck.items, "2026-08-01", "newer version wins for LWW keys")
+
   await lan.stop()
   console.log("\n✅ ALL LAN SERVER TESTS PASSED")
   process.exit(0)

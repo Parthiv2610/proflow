@@ -231,6 +231,8 @@ type Store = {
   sessionLabel: string
   focusMinutes: number
   breakMinutes: number
+  weeklyFocusGoal: number // minutes of deep work targeted per week
+  setWeeklyFocusGoal: (minutes: number) => void
   focusLog: FocusLogEntry[]
   recordFocusSession: () => void
   xp: number
@@ -256,10 +258,14 @@ type Store = {
 
 const StoreContext = createContext<Store | null>(null)
 
+/** "YYYY-MM-DD" for an arbitrary date. */
+function dateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
 /** Local date key in "YYYY-MM-DD" — used to group focus time and completions by day. */
 export function todayKey() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  return dateKey(new Date())
 }
 
 // ── XP & levels ────────────────────────────────────────────
@@ -317,7 +323,7 @@ export function nextShieldMilestone(level: number): number {
 // ── Achievements & milestones ─────────────────────────────────
 // Permanent badges earned once, celebrated with a popup + confetti when a
 // milestone is crossed. Stored per-device (like XP) as id → earned "YYYY-MM-DD".
-export type AchievementCategory = "streak" | "tasks"
+export type AchievementCategory = "streak" | "tasks" | "focus"
 export type Achievement = {
   id: string
   name: string
@@ -331,13 +337,56 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "streak-3", name: "First Flame", desc: "Reach a 3-day habit streak", icon: "🔥", category: "streak", threshold: 3 },
   { id: "streak-7", name: "Week Warrior", desc: "Reach a 7-day habit streak", icon: "⚡", category: "streak", threshold: 7 },
   { id: "streak-14", name: "Two-Week Titan", desc: "Reach a 14-day habit streak", icon: "🏆", category: "streak", threshold: 14 },
+  { id: "streak-21", name: "Marathon Mind", desc: "Reach a 21-day habit streak", icon: "🧠", category: "streak", threshold: 21 },
+  { id: "streak-30", name: "Monthly Master", desc: "Reach a 30-day habit streak", icon: "📅", category: "streak", threshold: 30 },
   { id: "tasks-10", name: "On a Roll", desc: "Complete 10 tasks", icon: "✅", category: "tasks", threshold: 10 },
   { id: "tasks-50", name: "Task Terminator", desc: "Complete 50 tasks", icon: "💪", category: "tasks", threshold: 50 },
   { id: "tasks-100", name: "Century Club", desc: "Complete 100 tasks", icon: "🚀", category: "tasks", threshold: 100 },
+  { id: "tasks-250", name: "Powerhouse", desc: "Complete 250 tasks", icon: "🔥", category: "tasks", threshold: 250 },
+  { id: "tasks-500", name: "Task Titan", desc: "Complete 500 tasks", icon: "👑", category: "tasks", threshold: 500 },
+  { id: "focus-10", name: "Deep Focus", desc: "Complete 10 focus sessions", icon: "🎯", category: "focus", threshold: 10 },
+  { id: "focus-50", name: "Flow State", desc: "Complete 50 focus sessions", icon: "🌊", category: "focus", threshold: 50 },
+  { id: "focus-100", name: "Focus Legend", desc: "Complete 100 focus sessions", icon: "🧘", category: "focus", threshold: 100 },
+  { id: "focus-250", name: "Zen Master", desc: "Complete 250 focus sessions", icon: "⚡", category: "focus", threshold: 250 },
 ]
+
+// ── Gamification ledgers (LAN-synced) ───────────────────────────
+// XP and streak shields are SUMS of idempotent events. Every earn, spend, free
+// grant and shield use carries an id; sync merges are set-unions of these
+// events, which is what makes simultaneous earns on both devices safe:
+//  - each event is counted exactly once (an event can never be double-counted
+//    even when both devices record it), and
+//  - every device's events are all kept (neither device's earn is lost to the
+//    other's newer-looking snapshot).
+// Deterministic ids (free:<level>, use:<date>:<habitId>) let the same logical
+// grant/consumption dedupe across devices; random ids keep distinct actions
+// distinct. Display totals below are derived from these ledgers.
+export type XpEvent = { id: string; amount: number }
+export type ShieldEvent = { id: string; amount: number }
+
+/** Sum of an event ledger (amounts are numbers, missing = 0). */
+function ledgerSum(events: { amount?: number }[]): number {
+  return events.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+}
+
+/** Merge two id-keyed event ledgers: union by id, larger amount wins on conflict. */
+function unionByIdMax<T extends { id: string; amount?: number }>(a: T[] | undefined, b: T[] | undefined): T[] {
+  const map = new Map<string, T>()
+  for (const x of [...(a ?? []), ...(b ?? [])]) {
+    const prev = map.get(x.id)
+    if (!prev || (Number(x.amount) || 0) > (Number(prev.amount) || 0)) map.set(x.id, x)
+  }
+  return [...map.values()]
+}
+
+/** JSON equality for change detection — ledgers/maps are small. */
+function sameJson(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
 
 const DEFAULT_FOCUS_MINUTES = 25
 const DEFAULT_BREAK_MINUTES = 5
+const DEFAULT_WEEKLY_FOCUS_GOAL = 300 // 5 hours of deep work per week
 
 // Sidebar layout thresholds — the sidebar collapses by default on smaller windows.
 export const SIDEBAR_DRAWER_MAX = 1024 // below this width the sidebar is an overlay drawer
@@ -366,45 +415,136 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setRawNotifications] = useLocalStorage<AppNotification[]>("notifications", initialNotifications)
   const [focusLog, setRawFocusLog] = useLocalStorage<FocusLogEntry[]>("focusLog", [])
 
-  // XP — device-local progress (not synced, like theme/prefs).
+  // ── LAN sync version machinery ────────────────────────────────
+  // Versions persist across sessions so `localV === undefined` only ever means
+  // "first-ever sync". After a restart a device that already synced keeps its
+  // version numbers — it won't clobber its own newer local edits with a stale
+  // remote v:0 snapshot on reconnect. Lives up here so the gamification
+  // ledgers (declared right after) can use version-bumping setters too.
+  const VERSIONS_KEY = "proflow-sync-versions"
+  const loadVersions = (): Record<string, number> => {
+    try {
+      const raw = localStorage.getItem(VERSIONS_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed as Record<string, number>
+        }
+      }
+    } catch {
+      // storage unavailable or corrupted — start from scratch
+    }
+    return {}
+  }
+  const persistVersions = () => {
+    try {
+      localStorage.setItem(VERSIONS_KEY, JSON.stringify(versionsRef.current))
+    } catch {
+      // storage unavailable — versions stay in memory only
+    }
+  }
+  const versionsRef = useRef<Record<string, number>>(loadVersions())
+  const lastPushedRef = useRef<Record<string, number>>({})
+  const appliedKeysRef = useRef<Set<string>>(new Set())
+  const applyingRemoteRef = useRef(false)
+  const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const snapRef = useRef<SyncSnapshot>({ collections: {} })
+  const prevReachableRef = useRef(false)
+
+  // Local mutations bump that collection's version (remote applies don't),
+  // which is what makes merges last-write-wins *per collection*.
+  const wrapSetter =
+    <T,>(key: string, setter: React.Dispatch<React.SetStateAction<T>>) =>
+    (u: React.SetStateAction<T>) => {
+      if (!applyingRemoteRef.current) {
+        versionsRef.current[key] = Date.now()
+        persistVersions()
+      }
+      setter(u)
+    }
+
+  // ── XP & shields (event ledgers — LAN-synced) ────────────────
+  // The ledgers are authoritative; `xp` / `streakShields` below are display
+  // caches derived from them. Existing users without a ledger get their saved
+  // balance seeded as a single "seed" event (same id on both devices, so the
+  // union keeps the larger of two pre-sync balances).
+  const [xpEvents, setRawXpEvents] = useLocalStorage<XpEvent[]>("xpEvents", [])
+  const xpEventsRef = useRef(xpEvents)
+  useEffect(() => {
+    xpEventsRef.current = xpEvents
+  }, [xpEvents])
+  const [shieldEvents, setRawShieldEvents] = useLocalStorage<ShieldEvent[]>("shieldEvents", [])
+  const shieldEventsRef = useRef(shieldEvents)
+  useEffect(() => {
+    shieldEventsRef.current = shieldEvents
+  }, [shieldEvents])
+  const setXpEvents = wrapSetter<XpEvent[]>("xpEvents", setRawXpEvents)
+  const setShieldEvents = wrapSetter<ShieldEvent[]>("shieldEvents", setRawShieldEvents)
+
+  // Display cache of sum(xpEvents) — kept current whenever the ledger changes.
   const [xp, setXp] = useLocalStorage("xp", 0)
   const xpRef = useRef(xp)
   useEffect(() => {
-    xpRef.current = xp
-  }, [xp])
+    if (xpEvents.length === 0) {
+      // One-time migration: saved XP without a ledger → seed it (wrapped setter
+      // bumps the version so the seed syncs to the other device too).
+      const stored = Number(localStorage.getItem("proflow-xp")) || 0
+      if (stored > 0) {
+        setXpEvents([{ id: "seed", amount: stored }])
+        return
+      }
+    }
+    const sum = ledgerSum(xpEvents)
+    xpRef.current = sum
+    setXp(sum)
+  }, [xpEvents, setXp, setXpEvents])
 
   // Award XP (positive only) and celebrate when it crosses a level boundary.
-  // xpRef keeps the total authoritative across batched updates.
+  // Every award is an idempotent ledger event, so syncing never double-counts.
   const addXp = useCallback((amount: number) => {
     const before = levelFor(xpRef.current)
     const next = xpRef.current + amount
     xpRef.current = next
+    setXpEvents((prev) => [...prev, { id: `xp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, amount }])
     setXp(next)
     const after = levelFor(next)
     if (after > before) celebrate({ big: true })
-  }, [setXp])
+  }, [setXp, setXpEvents])
 
-  // Streak shields — persisted, device-local (like XP). You can hold at most
-  // MAX_SHIELDS; buying one costs SHIELD_PRICE XP.
+  // Streak shields — buy insurance with XP. You can hold at most MAX_SHIELDS;
+  // buying one costs SHIELD_PRICE XP. Balance = clamp(sum of ledger, 0..MAX).
   const [streakShields, setStreakShields] = useLocalStorage("streakShields", 0)
-  const [lastHabitCheck, setLastHabitCheck] = useLocalStorage("lastHabitCheck", "")
+  useEffect(() => {
+    if (shieldEvents.length === 0) {
+      // One-time migration: saved shields without a ledger → seed them.
+      const stored = Number(localStorage.getItem("proflow-streakShields")) || 0
+      if (stored > 0) {
+        setShieldEvents([{ id: "seed", amount: stored }])
+        return
+      }
+    }
+    const bal = Math.max(0, Math.min(MAX_SHIELDS, ledgerSum(shieldEvents)))
+    shieldsRef.current = bal
+    setStreakShields(bal)
+  }, [shieldEvents, setStreakShields, setShieldEvents])
+  const [lastHabitCheck, setRawLastHabitCheck] = useLocalStorage("lastHabitCheck", "")
+  const setLastHabitCheck = wrapSetter<string>("lastHabitCheck", setRawLastHabitCheck)
 
   // A ref mirror makes the cap check race-safe against rapid clicks (the state
   // closure can be stale within one render frame); XP is already ref-authoritative.
   const shieldsRef = useRef(streakShields)
-  useEffect(() => {
-    shieldsRef.current = streakShields
-  }, [streakShields])
   // Guards the day-rollover against double-processing within one render frame.
   const habitCheckRef = useRef("")
 
   // ── Free shield level rewards ─────────────────────────────────
-  // Highest level milestone that has already paid out a free shield.
-  const [lastShieldMilestone, setLastShieldMilestone] = useLocalStorage("lastShieldMilestone", 0)
+  // Highest level milestone that has already paid out a free shield. Synced
+  // with a max-merge so a device that pulls a higher milestone never re-grants.
+  const [lastShieldMilestone, setRawLastShieldMilestone] = useLocalStorage("lastShieldMilestone", 0)
   const shieldMilestoneRef = useRef(lastShieldMilestone)
   useEffect(() => {
     shieldMilestoneRef.current = lastShieldMilestone
   }, [lastShieldMilestone])
+  const setLastShieldMilestone = wrapSetter<number>("lastShieldMilestone", setRawLastShieldMilestone)
 
   // Free shield at every FREE_SHIELD_EVERY_LEVELS-th level (3, 6, 9, …). Watches
   // XP so the reward fires exactly when a milestone level is crossed — ref-guarded
@@ -432,14 +572,18 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       const milestone = paid + FREE_SHIELD_EVERY_LEVELS
       shieldMilestoneRef.current = milestone
       setLastShieldMilestone(milestone)
+      // Deterministic event ids: if both devices cross the same milestone at
+      // the same time, the ledger union dedupes and the reward is granted once.
       if (shieldsRef.current < MAX_SHIELDS) {
-        shieldsRef.current += 1
+        setShieldEvents((prev) => [...prev, { id: `free-${milestone}`, amount: 1 }])
+        shieldsRef.current = Math.min(MAX_SHIELDS, shieldsRef.current + 1)
         setStreakShields(shieldsRef.current)
         celebrate({ big: true })
         showNotification("ProFlow", `🎁 Level ${milestone} reached — you earned a free streak shield!`)
       } else {
         const bonus = Math.round(SHIELD_PRICE / 2)
         xpRef.current += bonus
+        setXpEvents((prev) => [...prev, { id: `bonus-${milestone}`, amount: bonus }])
         setXp(xpRef.current)
         showNotification("ProFlow", `🎁 Level ${milestone} reached — shields are full, so here's ${bonus} XP instead!`)
       }
@@ -449,21 +593,43 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   }, [xp])
 
   // ── Achievements state ────────────────────────────────────────
-  const [achievements, setAchievements] = useLocalStorage<Record<string, string>>("achievements", {})
+  // Achievements is a grow-only map (id → earned date) and bestStreak a
+  // monotonic max — both sync with union/max merges, so badges and records
+  // earned on either device survive. totalTasksDone is NOT synced itself: it's
+  // derived from the synced tasks below, exactly like totalFocusRef derives
+  // from the synced focusLog.
+  const [achievements, setRawAchievements] = useLocalStorage<Record<string, string>>("achievements", {})
   const achievementsRef = useRef(achievements)
   useEffect(() => {
     achievementsRef.current = achievements
   }, [achievements])
-  const [bestStreak, setBestStreak] = useLocalStorage("bestStreak", 0)
+  const setAchievements = wrapSetter<Record<string, string>>("achievements", setRawAchievements)
+  const [bestStreak, setRawBestStreak] = useLocalStorage("bestStreak", 0)
   const bestStreakRef = useRef(bestStreak)
   useEffect(() => {
     bestStreakRef.current = bestStreak
   }, [bestStreak])
+  const setBestStreak = wrapSetter<number>("bestStreak", setRawBestStreak)
   const [totalTasksDone, setTotalTasksDone] = useLocalStorage("totalTasksDone", 0)
   const totalTasksRef = useRef(totalTasksDone)
   useEffect(() => {
     totalTasksRef.current = totalTasksDone
   }, [totalTasksDone])
+  // Lifetime task-completions counter — reconciled from the (synced) tasks, so
+  // it stays identical across devices without being synced itself.
+  useEffect(() => {
+    const done = tasks.filter((t) => t.status === "done" && t.completedAt).length
+    if (done !== totalTasksRef.current) {
+      totalTasksRef.current = done
+      setTotalTasksDone(done)
+    }
+  }, [tasks, setTotalTasksDone])
+  // Lifetime focus-session counter — kept in sync with the focus log (which is
+  // what makes it survive LAN sync, where focusLog can arrive from the laptop).
+  const totalFocusRef = useRef(0)
+  useEffect(() => {
+    totalFocusRef.current = focusLog.reduce((s, e) => s + e.sessions, 0)
+  }, [focusLog])
   // Queue of badges waiting to be celebrated — if several milestones cross at
   // once (e.g. a long-time user linking a fresh phone), each gets its own popup.
   const [pendingBadges, setPendingBadges] = useState<Achievement[]>([])
@@ -496,13 +662,22 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     [awardIfNew, setBestStreak],
   )
 
-  // Task milestones (10/50/100): bump the lifetime counter and award thresholds.
+  // Task milestones (10/50/100/250/500): bump the lifetime counter and award thresholds.
   const checkTaskMilestones = useCallback(() => {
     const total = totalTasksRef.current + 1
     totalTasksRef.current = total
     setTotalTasksDone(total)
     ACHIEVEMENTS.filter((a) => a.category === "tasks" && total >= a.threshold).forEach(awardIfNew)
   }, [awardIfNew, setTotalTasksDone])
+
+  // Focus milestones (10/50/100/250 sessions): award every threshold the given
+  // lifetime session total has crossed. Called when a session completes.
+  const checkFocusMilestones = useCallback(
+    (total: number) => {
+      ACHIEVEMENTS.filter((a) => a.category === "focus" && total >= a.threshold).forEach(awardIfNew)
+    },
+    [awardIfNew],
+  )
 
   // Seed once per device when the achievements key is absent: credit streaks/tasks
   // the user already completed so the badge gallery is accurate (no popup storm —
@@ -513,6 +688,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       if (localStorage.getItem("proflow-achievements") !== null) return
       const maxStreak = habits.reduce((m, h) => Math.max(m, h.streak), 0)
       const tasksDone = tasks.filter((t) => t.status === "done" && t.completedAt).length
+      const focusSessions = focusLog.reduce((s, e) => s + e.sessions, 0)
       if (maxStreak > 0) {
         bestStreakRef.current = maxStreak
         setBestStreak(maxStreak)
@@ -521,25 +697,33 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
         totalTasksRef.current = tasksDone
         setTotalTasksDone(tasksDone)
       }
+      if (focusSessions > 0) totalFocusRef.current = focusSessions
       const seeded: Record<string, string> = {}
       ACHIEVEMENTS.forEach((a) => {
-        const v = a.category === "streak" ? maxStreak : tasksDone
+        const v = a.category === "streak" ? maxStreak : a.category === "tasks" ? tasksDone : focusSessions
         if (v >= a.threshold) seeded[a.id] = todayKey()
       })
       if (Object.keys(seeded).length) setAchievements(seeded)
     } catch {
       // storage unavailable — nothing to seed
     }
-  }, [tasks, habits, setBestStreak, setTotalTasksDone, setAchievements])
+  }, [tasks, habits, focusLog, setBestStreak, setTotalTasksDone, setAchievements])
 
   const buyShield = useCallback(() => {
     if (shieldsRef.current >= MAX_SHIELDS || xpRef.current < SHIELD_PRICE) return false
     xpRef.current -= SHIELD_PRICE
+    const stamp = Date.now()
+    const rand = Math.random().toString(36).slice(2, 8)
+    setXpEvents((prev) => [...prev, { id: `spend-${stamp}-${rand}`, amount: -SHIELD_PRICE }])
     setXp(xpRef.current)
     shieldsRef.current += 1
+    // Random suffix: two purchases in the same millisecond must stay distinct
+    // events — a shared id would be deduped by the union merge and a shield
+    // silently lost.
+    setShieldEvents((prev) => [...prev, { id: `buy-${stamp}-${rand}`, amount: 1 }])
     setStreakShields(shieldsRef.current)
     return true
-  }, [setXp, setStreakShields])
+  }, [setXp, setStreakShields, setXpEvents, setShieldEvents])
 
   // Projects derived from real task data — no hardcoded demo projects. A task
   // can carry any project name; the sidebar/tasks view only ever shows projects
@@ -553,23 +737,9 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [userName, setRawUserName] = useLocalStorage("userName", "You")
 
   // ── LAN sync plumbing (version-bumping setters) ────────────────
-  const versionsRef = useRef<Record<string, number>>({})
-  const lastPushedRef = useRef<Record<string, number>>({})
-  const appliedKeysRef = useRef<Set<string>>(new Set())
-  const applyingRemoteRef = useRef(false)
-  const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const snapRef = useRef<SyncSnapshot>({ collections: {} })
-  const prevReachableRef = useRef(false)
-
-  // Local mutations bump that collection's version (remote applies don't),
-  // which is what makes merges last-write-wins *per collection*.
-  const wrapSetter =
-    <T,>(key: string, setter: React.Dispatch<React.SetStateAction<T>>) =>
-    (u: React.SetStateAction<T>) => {
-      if (!applyingRemoteRef.current) versionsRef.current[key] = Date.now()
-      setter(u)
-    }
-
+  // Wrapped setters bump that collection's version on local edits (remote
+  // applies don't). The version machinery itself (versionsRef, wrapSetter)
+  // lives near the top of the provider so the gamification ledgers use it too.
   const setTasks = wrapSetter<Task[]>("tasks", setRawTasks)
   const setHabits = wrapSetter<Habit[]>("habits", setRawHabits)
   const setGoals = wrapSetter<Goal[]>("goals", setRawGoals)
@@ -578,7 +748,8 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const setNotifications = wrapSetter<AppNotification[]>("notifications", setRawNotifications)
   const setFocusLog = wrapSetter<FocusLogEntry[]>("focusLog", setRawFocusLog)
   const setUserName = wrapSetter<string>("userName", setRawUserName)
-  const [avatarUrl, setAvatarUrl] = useLocalStorage("avatarUrl", "")
+  const [avatarUrl, setRawAvatarUrl] = useLocalStorage("avatarUrl", "")
+  const setAvatarUrl = wrapSetter<string>("avatarUrl", setRawAvatarUrl)
 
   // Day rollover for streaks: a scheduled habit day that passes without being
   // completed normally resets the streak — a shield (if held) absorbs the miss.
@@ -610,37 +781,47 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     }
     let shieldsLeft = shieldsRef.current
     let used = 0
+    const useEvents: ShieldEvent[] = []
     const next = habits.map((h) => {
       const base = { ...h, doneToday: false }
       if (h.streak <= 0) return base
-      let missed = 0
+      const missedDays: string[] = []
       gapDays.forEach((d, i) => {
         // week[] is Monday-first (M,T,W,T,F,S,S) but getDay() is Sunday-first
         // (0=Sun…6=Sat) — shift so both index 0 = Monday.
         if (!h.week[(d.getDay() + 6) % 7]) return // habit not scheduled that weekday
         // The last active day is credited if the user had marked it done.
         if (i === 0) {
-          if (!h.doneToday) missed++
+          if (!h.doneToday) missedDays.push(dateKey(d))
         } else {
-          missed++
+          missedDays.push(dateKey(d))
         }
       })
-      if (missed === 0) return base
-      const absorbed = Math.min(missed, shieldsLeft)
-      shieldsLeft -= absorbed
+      if (missedDays.length === 0) return base
+      // Absorb one missed day per shield held. Each absorption records a
+      // deterministic event (date + habit) — if BOTH devices process the same
+      // missed day, the union merge dedupes and the shield is never
+      // double-consumed.
+      let absorbed = 0
+      while (absorbed < missedDays.length && shieldsLeft > 0) {
+        useEvents.push({ id: `use:${missedDays[absorbed]}:${h.id}`, amount: -1 })
+        shieldsLeft -= 1
+        absorbed++
+      }
       used += absorbed
       // Not enough shields to cover every missed day → the streak breaks.
-      return absorbed < missed ? { ...base, streak: 0 } : base
+      return absorbed < missedDays.length ? { ...base, streak: 0 } : base
     })
     if (used > 0) {
       shieldsRef.current = shieldsLeft
+      setShieldEvents((prev) => [...prev, ...useEvents])
       setStreakShields(shieldsLeft)
       showNotification("ProFlow", `🛡️ ${used} shield${used > 1 ? "s" : ""} used to keep your streak${used > 1 ? "s" : ""} alive!`)
       celebrate()
     }
     setHabits(next)
     setLastHabitCheck(today)
-  }, [lastHabitCheck, shieldsRef, habits, setHabits, setStreakShields, setLastHabitCheck])
+  }, [lastHabitCheck, shieldsRef, habits, setHabits, setShieldEvents, setStreakShields, setLastHabitCheck])
 
   // Check on mount, every minute, and when the tab regains focus — so a streak
   // that would break overnight is caught (and shield-protected) as soon as the
@@ -657,11 +838,13 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   }, [runHabitDayCheck])
 
   // theme + preferences (persisted, applied live)
-  const [theme, setTheme] = useLocalStorage("settings-theme", "Purple")
-  const [prefs, setPrefs] = useLocalStorage<Pref[]>("settings-prefs-v2", defaultPrefs)
+  const [theme, setRawTheme] = useLocalStorage("settings-theme", "Purple")
+  const setTheme = wrapSetter<string>("theme", setRawTheme)
+  const [prefs, setRawPrefs] = useLocalStorage<Pref[]>("settings-prefs-v2", defaultPrefs)
+  const setPrefs = wrapSetter<Pref[]>("prefs", setRawPrefs)
   const togglePref = useCallback((id: string) => {
     setPrefs((prev) => prev.map((p) => (p.id === id ? { ...p, on: !p.on } : p)))
-  }, [])
+  }, [setPrefs])
 
   // Apply the accent theme as CSS variables on <html>
   useEffect(() => {
@@ -735,6 +918,15 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("resize", onResize)
   }, [])
 
+  // Timer settings — synced over LAN like everything else, so durations and the
+  // weekly goal stay in lockstep between laptop and phone.
+  const [focusMinutes, setRawFocusMinutes] = useLocalStorage("focusMinutes", DEFAULT_FOCUS_MINUTES)
+  const setFocusMinutes = wrapSetter<number>("focusMinutes", setRawFocusMinutes)
+  const [breakMinutes, setRawBreakMinutes] = useLocalStorage("breakMinutes", DEFAULT_BREAK_MINUTES)
+  const setBreakMinutes = wrapSetter<number>("breakMinutes", setRawBreakMinutes)
+  const [weeklyFocusGoal, setRawWeeklyFocusGoal] = useLocalStorage("weeklyFocusGoal", DEFAULT_WEEKLY_FOCUS_GOAL)
+  const setWeeklyFocusGoal = wrapSetter<number>("weeklyFocusGoal", setRawWeeklyFocusGoal)
+
   // ── LAN sync (phone ↔ laptop over Wi-Fi, no account) ───────────
   const [lanInfo, setLanInfo] = useState<LanInfo | null>(null)
   const [lanAuthed, setLanAuthed] = useState(false)
@@ -766,9 +958,42 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
         notifications: { v: versionsRef.current.notifications ?? 0, items: notifications },
         focusLog: { v: versionsRef.current.focusLog ?? 0, items: focusLog },
         userName: { v: versionsRef.current.userName ?? 0, items: userName },
+        avatarUrl: { v: versionsRef.current.avatarUrl ?? 0, items: avatarUrl },
+        theme: { v: versionsRef.current.theme ?? 0, items: theme },
+        prefs: { v: versionsRef.current.prefs ?? 0, items: prefs },
+        focusMinutes: { v: versionsRef.current.focusMinutes ?? 0, items: focusMinutes },
+        breakMinutes: { v: versionsRef.current.breakMinutes ?? 0, items: breakMinutes },
+        weeklyFocusGoal: { v: versionsRef.current.weeklyFocusGoal ?? 0, items: weeklyFocusGoal },
+        xpEvents: { v: versionsRef.current.xpEvents ?? 0, items: xpEvents },
+        shieldEvents: { v: versionsRef.current.shieldEvents ?? 0, items: shieldEvents },
+        achievements: { v: versionsRef.current.achievements ?? 0, items: achievements },
+        bestStreak: { v: versionsRef.current.bestStreak ?? 0, items: bestStreak },
+        lastShieldMilestone: { v: versionsRef.current.lastShieldMilestone ?? 0, items: lastShieldMilestone },
+        lastHabitCheck: { v: versionsRef.current.lastHabitCheck ?? 0, items: lastHabitCheck },
       },
     }
-  }, [tasks, habits, goals, events, notes, notifications, focusLog, userName])
+  }, [
+    tasks,
+    habits,
+    goals,
+    events,
+    notes,
+    notifications,
+    focusLog,
+    userName,
+    avatarUrl,
+    theme,
+    prefs,
+    focusMinutes,
+    breakMinutes,
+    weeklyFocusGoal,
+    xpEvents,
+    shieldEvents,
+    achievements,
+    bestStreak,
+    lastShieldMilestone,
+    lastHabitCheck,
+  ])
 
   // Merge a remote snapshot — per-collection last-write-wins.
   // Uses the RAW setters; version bumps happen explicitly here.
@@ -778,14 +1003,72 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       let applied = false
       const apply = <T,>(key: string, items: unknown, setter: (v: T) => void) => {
         const v = cols[key]?.v ?? 0
-        if (v > (versionsRef.current[key] ?? 0)) {
+        const localV = versionsRef.current[key]
+        // Apply when the remote collection is newer — or when we have no local
+        // version at all (fresh device / first-ever sync: the laptop teaches its
+        // data as v:0, which a strict "v > 0" would reject forever).
+        if (localV === undefined || v > localV) {
           versionsRef.current[key] = v
+          persistVersions()
           appliedKeysRef.current.add(key)
           // Only set when something is actually applied — a stale flag would
           // swallow the version bump of the next genuine local edit.
           applyingRemoteRef.current = true
           applied = true
           setter(items as T)
+        }
+      }
+      // Grow-only merges for the gamification layer — they never lose a
+      // simultaneous earn and never double-count one. Union/max merges are
+      // idempotent, so applying our own echoed push is a no-op (no version
+      // bump, no applied flag) and can't cause a push loop.
+      const applyUnionItems = <T extends { id: string; amount?: number },>(
+        key: string,
+        ref: React.MutableRefObject<T[]>,
+        setter: (v: T[]) => void,
+      ) => {
+        const remote = cols[key]
+        if (!remote) return
+        const merged = unionByIdMax<T>(ref.current, (remote.items as T[]) ?? [])
+        if (!sameJson(ref.current, merged)) {
+          versionsRef.current[key] = Math.max(remote.v ?? 0, versionsRef.current[key] ?? 0)
+          persistVersions()
+          appliedKeysRef.current.add(key)
+          applyingRemoteRef.current = true
+          applied = true
+          setter(merged)
+        }
+      }
+      const applyUnionMap = <T,>(
+        key: string,
+        ref: React.MutableRefObject<Record<string, T>>,
+        setter: (v: Record<string, T>) => void,
+      ) => {
+        const remote = cols[key]
+        if (!remote) return
+        const local = ref.current ?? {}
+        const merged = { ...((remote.items as Record<string, T>) ?? {}), ...local }
+        if (!sameJson(local, merged)) {
+          versionsRef.current[key] = Math.max(remote.v ?? 0, versionsRef.current[key] ?? 0)
+          persistVersions()
+          appliedKeysRef.current.add(key)
+          applyingRemoteRef.current = true
+          applied = true
+          setter(merged)
+        }
+      }
+      const applyMax = (key: string, ref: React.MutableRefObject<number>, setter: (v: number) => void) => {
+        const remote = cols[key]
+        if (!remote) return
+        const local = Number(ref.current) || 0
+        const merged = Math.max(local, Number(remote.items) || 0)
+        if (merged !== local) {
+          versionsRef.current[key] = Math.max(remote.v ?? 0, versionsRef.current[key] ?? 0)
+          persistVersions()
+          appliedKeysRef.current.add(key)
+          applyingRemoteRef.current = true
+          applied = true
+          setter(merged)
         }
       }
       apply<Task[]>("tasks", cols.tasks?.items, setRawTasks)
@@ -796,6 +1079,20 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       apply<AppNotification[]>("notifications", cols.notifications?.items, setRawNotifications)
       apply<FocusLogEntry[]>("focusLog", cols.focusLog?.items, setRawFocusLog)
       apply<string>("userName", cols.userName?.items, setRawUserName)
+      apply<string>("avatarUrl", cols.avatarUrl?.items, setRawAvatarUrl)
+      apply<string>("theme", cols.theme?.items, setRawTheme)
+      apply<Pref[]>("prefs", cols.prefs?.items, setRawPrefs)
+      apply<number>("focusMinutes", cols.focusMinutes?.items, setRawFocusMinutes)
+      apply<number>("breakMinutes", cols.breakMinutes?.items, setRawBreakMinutes)
+      apply<number>("weeklyFocusGoal", cols.weeklyFocusGoal?.items, setRawWeeklyFocusGoal)
+      applyUnionItems<XpEvent>("xpEvents", xpEventsRef, setRawXpEvents)
+      applyUnionItems<ShieldEvent>("shieldEvents", shieldEventsRef, setRawShieldEvents)
+      applyUnionMap<string>("achievements", achievementsRef, setRawAchievements)
+      applyMax("bestStreak", bestStreakRef, setRawBestStreak)
+      applyMax("lastShieldMilestone", shieldMilestoneRef, setRawLastShieldMilestone)
+      // Plain LWW — but only when the remote actually carries it, so a
+      // snapshot from a device that predates lastHabitCheck can't blank ours.
+      if (cols.lastHabitCheck) apply<string>("lastHabitCheck", cols.lastHabitCheck?.items, setRawLastHabitCheck)
       return applied
     },
     [
@@ -807,6 +1104,18 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       setRawNotifications,
       setRawFocusLog,
       setRawUserName,
+      setRawAvatarUrl,
+      setRawTheme,
+      setRawPrefs,
+      setRawFocusMinutes,
+      setRawBreakMinutes,
+      setRawWeeklyFocusGoal,
+      setRawXpEvents,
+      setRawShieldEvents,
+      setRawAchievements,
+      setRawBestStreak,
+      setRawLastShieldMilestone,
+      setRawLastHabitCheck,
     ],
   )
 
@@ -937,8 +1246,30 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     )
     if (!pending) return
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
-    pushTimerRef.current = setTimeout(() => doPushNow(), 700)
-  }, [tasks, habits, goals, events, notes, notifications, focusLog, userName, lanActive, doPushNow])
+    pushTimerRef.current = setTimeout(() => doPushNow(), 700)    }, [
+      tasks,
+      habits,
+      goals,
+      events,
+      notes,
+      notifications,
+      focusLog,
+      userName,
+      avatarUrl,
+      theme,
+      prefs,
+      focusMinutes,
+      breakMinutes,
+      weeklyFocusGoal,
+      xpEvents,
+      shieldEvents,
+      achievements,
+      bestStreak,
+      lastShieldMilestone,
+      lastHabitCheck,
+      lanActive,
+      doPushNow,
+    ])
 
   // Phone: poll the laptop every few seconds.
   const phonePoll = useCallback(async () => {
@@ -953,8 +1284,11 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       const applied = applyRemote(snap)
       if (applied) setLastSyncedAt(Date.now())
     }
-    // Reconnected — upload any edits made while the laptop was offline.
-    if (reachable && !prevReachableRef.current) {
+    // Reconnected — upload any edits made while the laptop was offline. Skip
+    // when a remote snapshot was just applied: the push effect will send any
+    // genuinely unsent local edits after re-render, and pushing a stale/empty
+    // snapshot now could overwrite the laptop's fresher data on the server.
+    if (reachable && !prevReachableRef.current && !applyingRemoteRef.current) {
       doPushNow()
     }
     prevReachableRef.current = reachable
@@ -1011,8 +1345,6 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   // timer
-  const [focusMinutes, setFocusMinutes] = useLocalStorage("focusMinutes", DEFAULT_FOCUS_MINUTES)
-  const [breakMinutes, setBreakMinutes] = useLocalStorage("breakMinutes", DEFAULT_BREAK_MINUTES)
   const [mode, setMode] = useState<TimerMode>("focus")
   const [totalSeconds, setTotalSeconds] = useState(DEFAULT_FOCUS_MINUTES * 60)
   const [secondsLeft, setSecondsLeft] = useState(DEFAULT_FOCUS_MINUTES * 60)
@@ -1058,10 +1390,13 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       }
       return [...prev, { date: key, minutes: focusMinutes, sessions: 1 }]
     })
+    // Focus badges: this just-completed session pushes the lifetime total up by
+    // one — award any milestone thresholds it crosses.
+    checkFocusMilestones(totalFocusRef.current + 1)
     // The dopamine hit for finishing a focus session.
     addXp(25)
     celebrate({ big: true })
-  }, [focusMinutes, setFocusLog, addXp])
+  }, [focusMinutes, setFocusLog, addXp, checkFocusMilestones])
 
   // Session end: chime / notify / auto-advance according to preferences.
   useEffect(() => {
@@ -1140,27 +1475,39 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setRawNotes([])
     setRawNotifications([])
     setRawFocusLog([])
-    setXp(0)
+    setRawXpEvents([])
     xpRef.current = 0
+    setXp(0)
+    setRawShieldEvents([])
+    shieldsRef.current = 0
     setStreakShields(0)
-    setLastHabitCheck("")
+    setRawLastHabitCheck("")
     shieldMilestoneRef.current = 0
-    setLastShieldMilestone(0)
-    setAchievements({})
+    setRawLastShieldMilestone(0)
+    setRawAchievements({})
     achievementsRef.current = {}
-    setBestStreak(0)
+    setRawBestStreak(0)
     bestStreakRef.current = 0
     setTotalTasksDone(0)
     totalTasksRef.current = 0
+    totalFocusRef.current = 0
+    // Versioning restarts fresh too — stale in-memory versions could otherwise
+    // suppress pushes after the wipe.
+    versionsRef.current = {}
+    lastPushedRef.current = {}
     setPendingBadges([])
     setRawUserName("You")
-    setAvatarUrl("")
-    setTheme("Purple")
-    setPrefs(defaultPrefs)
+    // Use the RAW setters here — the wrapped ones would bump versions and
+    // rewrite the just-purged proflow-sync-versions key, leaving the reset
+    // to propagate inconsistently across LAN.
+    setRawAvatarUrl("")
+    setRawTheme("Purple")
+    setRawPrefs(defaultPrefs)
     setShowTour(false)
     setSessionCount(0)
-    setFocusMinutes(DEFAULT_FOCUS_MINUTES)
-    setBreakMinutes(DEFAULT_BREAK_MINUTES)
+    setRawFocusMinutes(DEFAULT_FOCUS_MINUTES)
+    setRawBreakMinutes(DEFAULT_BREAK_MINUTES)
+    setRawWeeklyFocusGoal(DEFAULT_WEEKLY_FOCUS_GOAL)
     setTotalSeconds(DEFAULT_FOCUS_MINUTES * 60)
     setSecondsLeft(DEFAULT_FOCUS_MINUTES * 60)
     setMode("focus")
@@ -1179,22 +1526,25 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setRawNotes,
     setRawNotifications,
     setRawFocusLog,
+    setRawXpEvents,
     setXp,
+    setRawShieldEvents,
     setStreakShields,
-    setLastHabitCheck,
-    setLastShieldMilestone,
-    setAchievements,
-    setBestStreak,
+    setRawLastHabitCheck,
+    setRawLastShieldMilestone,
+    setRawAchievements,
+    setRawBestStreak,
     setTotalTasksDone,
     setPendingBadges,
     setRawUserName,
-    setAvatarUrl,
-    setTheme,
-    setPrefs,
+    setRawAvatarUrl,
+    setRawTheme,
+    setRawPrefs,
     setShowTour,
     setSessionCount,
-    setFocusMinutes,
-    setBreakMinutes,
+    setRawFocusMinutes,
+    setRawBreakMinutes,
+    setRawWeeklyFocusGoal,
     setTotalSeconds,
     setSecondsLeft,
     setMode,
@@ -1459,15 +1809,17 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       totalTasksDone,
       pendingBadges,
       dismissBadge,
-      setFocusMinutes,
-      setBreakMinutes,
-      startTimer,
-      pauseTimer,
-      toggleTimer,
-      skipTimer,
-      stopTimer,
-      resetTimer,
-    }),
+    setFocusMinutes,
+    setBreakMinutes,
+    weeklyFocusGoal,
+    setWeeklyFocusGoal,
+    startTimer,
+    pauseTimer,
+    toggleTimer,
+    skipTimer,
+    stopTimer,
+    resetTimer,
+  }),
     [
       view, search, tasks, projects, addTask, deleteTask, reorderTasks, cycleTaskStatus, setTaskStatus, habits, addHabit,
       deleteHabit, toggleHabit, goals, addGoal, updateGoal, deleteGoal, events, addEvent, updateEvent, deleteEvent,
@@ -1477,11 +1829,12 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       lanInfo, lanAuthed, lanOnline, lanBusy, lanError, lastSyncedAt, lanGateOpen,
       enableLan, disableLan, regenLanPasscode, submitLanPasscode, disconnectPhone, openLanGate, closeLanGate,
       secondsLeft, totalSeconds, running, mode, pomodoro, sessionLabel,
-      focusMinutes, breakMinutes, focusLog, recordFocusSession, xp, addXp,
+      focusMinutes, breakMinutes, weeklyFocusGoal, setWeeklyFocusGoal, focusLog, recordFocusSession, xp, addXp,
       streakShields, buyShield,
-      achievements, bestStreak, totalTasksDone, pendingBadges, dismissBadge,
-      setFocusMinutes, setBreakMinutes,
+      achievements, bestStreak, totalTasksDone, pendingBadges, dismissBadge,      setFocusMinutes,
+      setBreakMinutes,
       startTimer, pauseTimer, toggleTimer, skipTimer, stopTimer, resetTimer,
+      weeklyFocusGoal, setWeeklyFocusGoal,
     ],
   )
 

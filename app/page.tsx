@@ -25,9 +25,19 @@ import { MilestonePopup } from "@/components/proflow/milestone-popup"
 function Workspace() {
   const { view, focusMode, toggleFocusMode, sidebarOpen, closeSidebar } = useStore()
   const [captureOpen, setCaptureOpen] = useState(false)
+  const [captureProject, setCaptureProject] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
 
-  const handleCapture = useCallback(() => setCaptureOpen(true), [])
+  // Plain "Add task" opens the dialog fresh; "New project" pre-fills the
+  // project name (from the tasks search box) so filling a project is faster.
+  const handleCapture = useCallback(() => {
+    setCaptureProject(null)
+    setCaptureOpen(true)
+  }, [])
+  const handleNewProject = useCallback((name: string) => {
+    setCaptureProject(name)
+    setCaptureOpen(true)
+  }, [])
   const closePalette = useCallback(() => setPaletteOpen(false), [])
 
   // ⌘P / Ctrl+P global toggle
@@ -93,7 +103,7 @@ function Workspace() {
         <main className="relative flex-1 overflow-y-auto">
           <AnimatedView key={view}>
             {view === "dashboard" && <Dashboard />}
-            {view === "tasks" && <TasksView onCapture={handleCapture} />}
+            {view === "tasks" && <TasksView onCapture={handleCapture} onNewProject={handleNewProject} />}
             {view === "calendar" && <CalendarView />}
             {view === "notes" && <NotesView />}
             {view === "habits" && <HabitsView />}
@@ -116,7 +126,11 @@ function Workspace() {
         </div>
       </div>
 
-      <CaptureDialog open={captureOpen} onClose={() => setCaptureOpen(false)} />
+      <CaptureDialog
+        open={captureOpen}
+        onClose={() => setCaptureOpen(false)}
+        initialProject={captureProject ?? undefined}
+      />
       <CommandPalette open={paletteOpen} onClose={closePalette} onCapture={handleCapture} />
       <WelcomeTour />
       <LanPasscodeGate />

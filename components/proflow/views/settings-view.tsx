@@ -14,6 +14,9 @@ import {
   Unlink,
   Wifi,
   WifiOff,
+  Download,
+  Upload,
+  FileJson,
 } from "lucide-react"
 import QRCode from "react-qr-code"
 import { cn, timeAgo } from "@/lib/utils"
@@ -55,6 +58,8 @@ export function SettingsView() {
     setTheme,
     prefs,
     togglePref,
+    weeklyFocusGoal,
+    setWeeklyFocusGoal,
     startTour,
     resetAllData,
     achievements,
@@ -63,6 +68,14 @@ export function SettingsView() {
   } = useStore()
   const [confirmReset, setConfirmReset] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [exported, setExported] = useState(false)
+  // Parsed backup waiting for confirmation — import replaces current data.
+  const [pendingImport, setPendingImport] = useState<Record<string, string> | null>(null)
+  // Local string state so the user can clear the field while typing without the
+  // controlled value snapping back to "0" on every keystroke.
+  const [goalHoursInput, setGoalHoursInput] = useState(() => String(weeklyFocusGoal / 60))
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -77,6 +90,95 @@ export function SettingsView() {
   }
 
   const themes = ["Purple", "Blue", "Green", "Amber"]
+
+  // ── Data backup: export / import everything stored under the proflow- prefix ──
+  // All app state (tasks, habits, goals, events, notes, focus log, settings,
+  // XP, badges) lives in localStorage under "proflow-" keys. Export collects
+  // every one of those keys into a single JSON file; import validates the file,
+  // writes the keys back, and reloads so the store re-initializes from them.
+  const handleExport = () => {
+    try {
+      const data: Record<string, string> = {}
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k && k.startsWith("proflow-")) {
+          const raw = localStorage.getItem(k)
+          if (raw !== null) data[k] = raw
+        }
+      }
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `proflow-backup-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      setExported(true)
+      setTimeout(() => setExported(false), 2500)
+      setImportError(null)
+    } catch {
+      // storage unavailable — nothing to export
+    }
+  }
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string)
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          setImportError("That doesn't look like a ProFlow backup file.")
+          return
+        }
+        // Only accept proflow-* keys so a foreign JSON can't pollute the app.
+        const entries: Record<string, string> = {}
+        let count = 0
+        Object.entries(parsed).forEach(([key, value]) => {
+          if (key.startsWith("proflow-") && typeof value === "string") {
+            entries[key] = value
+            count++
+          }
+        })
+        if (count === 0) {
+          setImportError("No ProFlow data found in that file.")
+          setPendingImport(null)
+          return
+        }
+        setImportError(null)
+        // Stage it and ask for confirmation — import replaces current data.
+        setPendingImport(entries)
+      } catch {
+        setImportError("Couldn't read that file. Pick a valid JSON backup exported from ProFlow.")
+        setPendingImport(null)
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  const confirmImport = () => {
+    if (!pendingImport) return
+    try {
+      // Replace: drop every existing proflow-* key, then write the backup's keys.
+      const doomed: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k && k.startsWith("proflow-")) doomed.push(k)
+      }
+      doomed.forEach((k) => localStorage.removeItem(k))
+      Object.entries(pendingImport).forEach(([key, value]) => localStorage.setItem(key, value))
+      setPendingImport(null)
+      // Reload so every hook re-reads its key from localStorage.
+      window.location.reload()
+    } catch {
+      setImportError("Import failed. Your previous backup file is untouched — you can try again.")
+      setPendingImport(null)
+    }
+  }
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -186,6 +288,33 @@ export function SettingsView() {
           </div>
         </Card>
 
+        <Card>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Deep work goal</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            How much deep focus you want to hit each week. The Progress page shows your progress toward this goal.
+          </p>
+          <div className="mt-4 flex items-center gap-3">
+            <input
+              type="number"
+              min={0}
+              max={168}
+              step={0.5}
+              value={goalHoursInput}
+              onChange={(e) => {
+                setGoalHoursInput(e.target.value)
+                const hours = Number(e.target.value)
+                if (Number.isFinite(hours)) setWeeklyFocusGoal(Math.max(0, Math.min(168, hours)) * 60)
+              }}
+              onBlur={() => setGoalHoursInput(String(weeklyFocusGoal / 60))}
+              className="w-32 rounded-lg border border-border bg-secondary/40 px-3 py-2 text-sm font-semibold text-foreground tabular-nums outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
+            />
+            <span className="text-sm text-muted-foreground">hours per week</span>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Set to 0 to hide the goal from the Progress page.
+          </p>
+        </Card>
+
         {/* Achievement badges — permanent gallery of earned milestones */}
         <Card>
           <div className="flex items-center justify-between gap-3">
@@ -233,6 +362,86 @@ export function SettingsView() {
           </p>
         </Card>
       </div>
+
+      {/* Data backup — export / import everything */}
+      <Card className="mt-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Data backup
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Export all your tasks, habits, notes, focus history, badges and settings to a JSON file — or
+              restore them on this or another device.
+            </p>
+          </div>
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-info/15 text-info">
+            <FileJson className="size-4.5" />
+          </span>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            {exported ? <CheckCircle2 className="size-3.5" /> : <Download className="size-3.5" />}
+            {exported ? "Exported!" : "Export data"}
+          </button>
+          <button
+            type="button"
+            onClick={() => importInputRef.current?.click()}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            <Upload className="size-3.5" />
+            Import data
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={handleImportFile}
+            className="hidden"
+          />
+        </div>
+
+        {pendingImport ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-danger/30 bg-danger/5 p-3">
+            <p className="flex-1 text-sm text-danger">
+              This replaces all current data on this device and restarts the app. Continue?
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={confirmImport}
+                className="flex items-center gap-1.5 rounded-lg bg-danger px-3 py-2 text-xs font-semibold text-danger-foreground transition-colors hover:bg-danger/90"
+              >
+                <Upload className="size-3.5" />
+                Yes, import
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingImport(null)}
+                className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Export keeps a copy of everything on this device. Importing replaces your current data and restarts
+            the app — keep your backup file safe.
+          </p>
+        )}
+
+        {importError && (
+          <p className="mt-3 rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {importError}
+          </p>
+        )}
+      </Card>
 
       {/* LAN Sync — phone access */}
       <Card className="mt-4">
@@ -633,7 +842,7 @@ function LanSyncCard() {
             </p>
           )}
           <p className="text-xs text-muted-foreground">
-            Server active{lanBusy ? " — starting…" : ""}. Tasks, habits, goals, events, notes and your name sync both ways.
+            Server active{lanBusy ? " — starting…" : ""}. Tasks, habits, goals, events, notes, XP, achievements, streak shields and best streaks all sync both ways.
           </p>
         </>
       ) : (

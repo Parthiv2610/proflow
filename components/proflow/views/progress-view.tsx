@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { Award, Flame, ListTodo, Timer, TrendingUp, Trophy, Zap } from "lucide-react"
+import { CalendarDays, Flame, ListTodo, Timer, TrendingUp, Trophy, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   ACHIEVEMENTS,
@@ -19,25 +19,59 @@ import { Card, PageHeader, ProgressBar } from "../ui"
 
 /**
  * Progress — the achievement cabinet: level curve + XP, all badges (earned and
- * locked with progress), personal bests, and a GitHub-style streak calendar
+ * locked with progress), this week's activity, and a GitHub-style streak calendar
  * built from real focus sessions and task completions.
  */
 export function ProgressView() {
-  const { xp, achievements, bestStreak, totalTasksDone, focusLog, tasks } = useStore()
+  const { xp, achievements, bestStreak, totalTasksDone, focusLog, tasks, weeklyFocusGoal } = useStore()
 
   const level = levelFor(xp)
   const into = xpIntoLevel(xp)
   const need = xpForNextLevel(level)
   const levelPct = need > 0 ? Math.round((into / need) * 100) : 100
 
-  // ── Personal bests (all real data) ────────────────────────────
+  // ── This week's stats (all real data, Monday–Sunday) ─────────
   const stats = useMemo(() => {
-    const totalMinutes = focusLog.reduce((s, e) => s + e.minutes, 0)
-    const totalSessions = focusLog.reduce((s, e) => s + e.sessions, 0)
-    const hours = Math.round((totalMinutes / 60) * 10) / 10
     const earned = ACHIEVEMENTS.filter((a) => achievements[a.id]).length
-    return { totalMinutes, totalSessions, hours, earned }
-  }, [focusLog, achievements])
+    return { earned }
+  }, [achievements])
+
+  const week = useMemo(() => {
+    // Monday of the current week (the app's weeks start Monday).
+    const now = new Date()
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7))
+    const key = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    const mondayKey = key(monday)
+
+    // Tasks completed within this week ("YYYY-MM-DD" compares lexicographically).
+    const tasksDone = tasks.filter(
+      (t) => t.status === "done" && !!t.completedAt && t.completedAt >= mondayKey,
+    ).length
+
+    // Focus sessions & deep-work minutes this week, plus distinct active days.
+    let sessions = 0
+    let minutes = 0
+    const activeDays = new Set<string>()
+    focusLog.forEach((e) => {
+      if (e.date >= mondayKey) {
+        sessions += e.sessions
+        minutes += e.minutes
+        if (e.sessions > 0) activeDays.add(e.date)
+      }
+    })
+    tasks.forEach((t) => {
+      if (t.status === "done" && t.completedAt && t.completedAt >= mondayKey) activeDays.add(t.completedAt)
+    })
+
+    return {
+      tasksDone,
+      sessions,
+      minutes,
+      hours: Math.round((minutes / 60) * 10) / 10,
+      activeDays: activeDays.size,
+    }
+  }, [tasks, focusLog])
 
   // ── Level curve: cumulative XP per level, with current marker ──
   const curve = useMemo(() => {
@@ -103,8 +137,10 @@ export function ProgressView() {
   }
 
   // Progress toward a locked badge (threshold vs the relevant current stat).
+  const totalFocusSessions = focusLog.reduce((s, e) => s + e.sessions, 0)
   const progressFor = (a: Achievement) => {
-    const v = a.category === "streak" ? bestStreak : totalTasksDone
+    const v =
+      a.category === "streak" ? bestStreak : a.category === "tasks" ? totalTasksDone : totalFocusSessions
     return { v, pct: Math.min(100, Math.round((v / a.threshold) * 100)) }
   }
 
@@ -189,43 +225,61 @@ export function ProgressView() {
           </div>
         </Card>
 
-        {/* ── Personal bests ── */}
+        {/* ── This week ── */}
         <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
           <div className="flex items-start justify-between">
-            <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Personal Bests</p>
+            <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">This Week</p>
             <span className="flex size-9 items-center justify-center rounded-lg bg-focus/15 text-focus">
-              <Award className="size-4.5" />
+              <CalendarDays className="size-4.5" />
             </span>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <BestTile
-              icon={<Flame className="size-4" />}
-              label="Best habit streak"
-              value={`${bestStreak}d`}
-              tone="text-focus"
-            />
-            <BestTile
               icon={<ListTodo className="size-4" />}
               label="Tasks completed"
-              value={String(totalTasksDone)}
+              value={String(week.tasksDone)}
               tone="text-primary"
             />
             <BestTile
               icon={<Timer className="size-4" />}
               label="Focus sessions"
-              value={String(stats.totalSessions)}
+              value={String(week.sessions)}
               tone="text-info"
             />
             <BestTile
               icon={<TrendingUp className="size-4" />}
-              label="Deep work total"
-              value={`${stats.hours}h`}
+              label="Deep work"
+              value={`${week.hours}h`}
               tone="text-success"
             />
+            <BestTile
+              icon={<Flame className="size-4" />}
+              label="Active days"
+              value={String(week.activeDays)}
+              tone="text-focus"
+            />
           </div>
+          {/* Weekly deep work goal */}
+          {weeklyFocusGoal > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <TrendingUp className="size-3.5" />
+                  Deep work goal
+                </span>
+                <span className="font-medium text-foreground tabular-nums">
+                  {week.hours}h / {(weeklyFocusGoal / 60).toFixed(1).replace(/\.0$/, "")}h
+                </span>
+              </div>
+              <ProgressBar
+                value={Math.min(100, Math.round((week.minutes / weeklyFocusGoal) * 100))}
+                tone="success"
+                className="mt-1.5"
+              />
+            </div>
+          )}
           <p className="mt-4 text-xs text-muted-foreground">
-            These track your all-time bests across this device — badges below unlock automatically as you pass
-            each milestone.
+            Everything you've done this week (Monday–Sunday) — resets each Monday. Set your deep work goal in Settings.
           </p>
         </Card>
       </div>
@@ -241,7 +295,7 @@ export function ProgressView() {
             <Trophy className="size-4.5" />
           </span>
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
           {ACHIEVEMENTS.map((a) => {
             const earned = !!achievements[a.id]
             const prog = progressFor(a)
