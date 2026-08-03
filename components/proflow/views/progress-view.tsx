@@ -1,7 +1,20 @@
 "use client"
 
-import { useMemo } from "react"
-import { CalendarDays, Flame, ListTodo, Timer, TrendingUp, Trophy, Zap } from "lucide-react"
+import { useMemo, useState } from "react"
+import {
+  Activity,
+  BarChart3,
+  CalendarDays,
+  Flame,
+  Layers,
+  ListTodo,
+  PieChart,
+  Repeat,
+  Timer,
+  TrendingUp,
+  Trophy,
+  Zap,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   ACHIEVEMENTS,
@@ -14,6 +27,8 @@ import {
   xpIntoLevel,
   useStore,
   type Achievement,
+  type FocusLogEntry,
+  type Task,
 } from "../store"
 import { Card, PageHeader, ProgressBar } from "../ui"
 
@@ -381,6 +396,537 @@ export function ProgressView() {
           More
         </div>
       </Card>
+
+      {/* ── Charts & trends ── */}
+      <div className="flex items-center gap-2.5 pt-1">
+        <span className="flex size-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
+          <BarChart3 className="size-4.5" />
+        </span>
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">Charts &amp; Trends</h2>
+          <p className="text-sm text-muted-foreground">How your effort stacks up over time.</p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="lg:col-span-2 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
+          <ActivityChart focusLog={focusLog} tasks={tasks} />
+        </Card>
+        <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
+          <WeeklyTrend focusLog={focusLog} weeklyFocusGoal={weeklyFocusGoal} />
+        </Card>
+        <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
+          <TaskMixDonut tasks={tasks} />
+        </Card>
+        <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
+          <WeekdayChart focusLog={focusLog} tasks={tasks} />
+        </Card>
+        <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
+          <ProjectBars tasks={tasks} />
+        </Card>
+      </div>
+    </div>
+  )
+}
+
+function dayKeyStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="h-0.5 w-4 rounded-full" style={{ backgroundColor: color }} />
+      {label}
+    </span>
+  )
+}
+
+// ── Daily activity: focus minutes + tasks completed, per day ──────────
+function ActivityChart({ focusLog, tasks }: { focusLog: FocusLogEntry[]; tasks: Task[] }) {
+  const [range, setRange] = useState<7 | 14 | 30>(14)
+  const [hover, setHover] = useState<number | null>(null)
+
+  const data = useMemo(() => {
+    const now = new Date()
+    const pts: { label: string; minutes: number; tasks: number; isToday: boolean }[] = []
+    for (let i = range - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
+      const k = dayKeyStr(d)
+      const entry = focusLog.find((e) => e.date === k)
+      pts.push({
+        label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        minutes: entry?.minutes ?? 0,
+        tasks: tasks.filter((t) => t.completedAt === k).length,
+        isToday: i === 0,
+      })
+    }
+    return pts
+  }, [focusLog, tasks, range])
+
+  const W = 720
+  const H = 250
+  const PAD_X = 36
+  const PAD_Y = 26
+  const innerW = W - PAD_X * 2
+  const innerH = H - PAD_Y * 2
+  const step = innerW / range
+  const barW = Math.min(step / 3, 16)
+  const maxMins = Math.max(...data.map((d) => d.minutes), 1)
+  const maxTasks = Math.max(...data.map((d) => d.tasks), 1)
+  const x = (i: number) => PAD_X + step * (i + 0.5)
+  const yM = (v: number) => PAD_Y + innerH - (v / maxMins) * innerH
+  const yT = (v: number) => PAD_Y + innerH - (v / maxTasks) * innerH
+  const labelEvery = Math.max(1, Math.ceil(range / 8))
+  const allZero = data.every((d) => d.minutes === 0 && d.tasks === 0)
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Daily Activity</p>
+          <p className="mt-1 text-sm text-muted-foreground">Focus time and tasks completed, day by day.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-4">
+          <Legend color="var(--primary)" label="Focus hrs" />
+          <Legend color="var(--focus)" label="Tasks done" />
+          <div className="flex rounded-lg border border-border p-0.5">
+            {([7, 14, 30] as const).map((n) => (
+              <button
+                key={n}
+                onClick={() => setRange(n)}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                  range === n ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {n}d
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {allZero ? (
+        <div className="mt-4 flex h-52 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-center">
+          <BarChart3 className="size-6 text-muted-foreground/60" />
+          <p className="text-sm font-medium text-foreground">No activity yet</p>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Complete tasks or finish focus sessions and your daily rhythm will show up here.
+          </p>
+        </div>
+      ) : (
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className="mt-4 h-52 w-full"
+          role="img"
+          aria-label="Daily focus hours and tasks completed"
+        >
+          {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+            <line
+              key={t}
+              x1={PAD_X}
+              x2={W - PAD_X}
+              y1={PAD_Y + innerH * t}
+              y2={PAD_Y + innerH * t}
+              stroke="var(--border)"
+              strokeDasharray="4 6"
+            />
+          ))}
+
+          {data.map((d, i) => (
+            <g key={i}>
+              <rect
+                x={x(i) - barW - 1.5}
+                y={yM(d.minutes)}
+                width={barW}
+                height={PAD_Y + innerH - yM(d.minutes)}
+                rx={Math.min(3, barW / 2)}
+                fill="var(--primary)"
+                opacity={d.isToday ? 1 : 0.85}
+              />
+              <rect
+                x={x(i) + 1.5}
+                y={yT(d.tasks)}
+                width={barW}
+                height={PAD_Y + innerH - yT(d.tasks)}
+                rx={Math.min(3, barW / 2)}
+                fill="var(--focus)"
+                opacity={d.isToday ? 1 : 0.85}
+              />
+              {i % labelEvery === 0 && (
+                <text x={x(i)} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[10px]">
+                  {d.label}
+                </text>
+              )}
+              {d.isToday && <circle cx={x(i)} cy={yM(d.minutes) - 9} r="2.5" fill="var(--primary)" />}
+              <rect
+                x={PAD_X + step * i}
+                y={PAD_Y}
+                width={step}
+                height={innerH}
+                fill="transparent"
+                onMouseEnter={() => setHover(i)}
+                onMouseLeave={() => setHover(null)}
+              />
+            </g>
+          ))}
+
+          {hover !== null && data[hover] && (
+            <g pointerEvents="none">
+              <rect
+                x={Math.max(PAD_X, Math.min(x(hover) - 78, W - PAD_X - 156))}
+                y={PAD_Y - 8}
+                width="156"
+                height="52"
+                rx="10"
+                fill="var(--popover)"
+                stroke="var(--border)"
+              />
+              <text x={x(hover)} y={PAD_Y + 10} textAnchor="middle" className="fill-foreground text-[11px] font-semibold">
+                {data[hover].label}
+                {data[hover].isToday ? " · Today" : ""}
+              </text>
+              <text x={x(hover)} y={PAD_Y + 25} textAnchor="middle" className="fill-primary text-[11px]">
+                {(data[hover].minutes / 60).toFixed(1)}h focus
+              </text>
+              <text x={x(hover)} y={PAD_Y + 38} textAnchor="middle" className="fill-focus text-[11px]">
+                {data[hover].tasks} tasks done
+              </text>
+            </g>
+          )}
+        </svg>
+      )}
+    </div>
+  )
+}
+
+// ── Deep-work trend: focus minutes per week vs the weekly goal ─────────
+function WeeklyTrend({ focusLog, weeklyFocusGoal }: { focusLog: FocusLogEntry[]; weeklyFocusGoal: number }) {
+  const data = useMemo(() => {
+    const now = new Date()
+    const weeks: { label: string; minutes: number; isCurrent: boolean }[] = []
+    for (let w = 7; w >= 0; w--) {
+      const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7) - w * 7)
+      const sunday = new Date(monday)
+      sunday.setDate(monday.getDate() + 6)
+      const mKey = dayKeyStr(monday)
+      const sKey = dayKeyStr(sunday)
+      let minutes = 0
+      focusLog.forEach((e) => {
+        if (e.date >= mKey && e.date <= sKey) minutes += e.minutes
+      })
+      weeks.push({
+        label: monday.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        minutes,
+        isCurrent: w === 0,
+      })
+    }
+    return weeks
+  }, [focusLog])
+
+  const W = 640
+  const H = 210
+  const PAD_X = 30
+  const PAD_Y = 26
+  const innerW = W - PAD_X * 2
+  const innerH = H - PAD_Y * 2
+  const maxV = Math.max(...data.map((d) => d.minutes), weeklyFocusGoal, 1)
+  const step = innerW / data.length
+  const barW = Math.min(step * 0.55, 34)
+  const x = (i: number) => PAD_X + step * (i + 0.5)
+  const y = (v: number) => PAD_Y + innerH - (v / maxV) * innerH
+  const goalHours = weeklyFocusGoal / 60
+
+  return (
+    <div>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Deep Work Trend</p>
+          <p className="mt-1 text-sm text-muted-foreground">Focus hours per week vs your {goalHours}h goal.</p>
+        </div>
+        <span className="flex size-9 items-center justify-center rounded-lg bg-success/15 text-success">
+          <Activity className="size-4.5" />
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 h-44 w-full" role="img" aria-label="Weekly focus hours trend">
+        <line
+          x1={PAD_X}
+          x2={W - PAD_X}
+          y1={y(weeklyFocusGoal)}
+          y2={y(weeklyFocusGoal)}
+          stroke="var(--success)"
+          strokeDasharray="5 5"
+          strokeWidth="1.5"
+        />
+        {data.map((d, i) => (
+          <g key={i}>
+            <rect
+              x={x(i) - barW / 2}
+              y={y(d.minutes)}
+              width={barW}
+              height={Math.max(1, PAD_Y + innerH - y(d.minutes))}
+              rx="4"
+              fill={d.minutes >= weeklyFocusGoal ? "var(--success)" : "var(--primary)"}
+              opacity={d.isCurrent ? 1 : 0.8}
+            />
+            <text x={x(i)} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[10px]">
+              {d.label}
+            </text>
+            {d.minutes > 0 && (
+              <text x={x(i)} y={y(d.minutes) - 5} textAnchor="middle" className="fill-muted-foreground text-[9px]">
+                {(d.minutes / 60).toFixed(1)}
+              </text>
+            )}
+          </g>
+        ))}
+        <text x={W - PAD_X} y={y(weeklyFocusGoal) - 6} textAnchor="end" className="fill-success text-[10px] font-semibold">
+          goal {goalHours}h
+        </text>
+      </svg>
+    </div>
+  )
+}
+
+// ── Task mix: donut of done / in-progress / to-do ─────────────────────
+function TaskMixDonut({ tasks }: { tasks: Task[] }) {
+  const total = tasks.length
+  const done = tasks.filter((t) => t.status === "done").length
+  const inProg = tasks.filter((t) => t.status === "in-progress").length
+  const todo = total - done - inProg
+  const R = 52
+  const C = 2 * Math.PI * R
+  let acc = 0
+  const arcs = [
+    { label: "Done", count: done, color: "var(--success)" },
+    { label: "In progress", count: inProg, color: "var(--info)" },
+    { label: "To do", count: todo, color: "var(--muted-foreground)" },
+  ].map((s) => {
+    const frac = total > 0 ? s.count / total : 0
+    const offset = acc
+    acc += frac
+    return { ...s, frac, offset }
+  })
+
+  return (
+    <div>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Task Mix</p>
+          <p className="mt-1 text-sm text-muted-foreground">Where every task stands right now.</p>
+        </div>
+        <span className="flex size-9 items-center justify-center rounded-lg bg-info/15 text-info">
+          <PieChart className="size-4.5" />
+        </span>
+      </div>
+      {total === 0 ? (
+        <div className="mt-4 flex h-40 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-center">
+          <p className="text-sm font-medium text-foreground">No tasks yet</p>
+          <p className="max-w-xs text-sm text-muted-foreground">Add a task and its status breakdown will appear here.</p>
+        </div>
+      ) : (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-6">
+          <div className="relative">
+            <svg viewBox="0 0 140 140" className="size-40">
+              {arcs.map((s) =>
+                s.frac > 0 ? (
+                  <circle
+                    key={s.label}
+                    cx="70"
+                    cy="70"
+                    r={R}
+                    fill="none"
+                    stroke={s.color}
+                    strokeWidth="15"
+                    strokeDasharray={`${s.frac * C} ${C}`}
+                    strokeDashoffset={-s.offset * C}
+                    transform="rotate(-90 70 70)"
+                  />
+                ) : null,
+              )}
+            </svg>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-2xl font-bold tracking-tight tabular-nums">{total}</span>
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">tasks</span>
+            </div>
+          </div>
+          <ul className="flex flex-col gap-2">
+            {arcs.map((s) => (
+              <li key={s.label} className="flex items-center gap-2 text-sm">
+                <span className="size-2.5 rounded-full" style={{ backgroundColor: s.color }} />
+                <span className="w-20 text-muted-foreground">{s.label}</span>
+                <span className="font-semibold tabular-nums">{s.count}</span>
+                <span className="w-10 text-right text-xs text-muted-foreground tabular-nums">
+                  {Math.round(s.frac * 100)}%
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Weekly rhythm: tasks + focus minutes by weekday (Mon-first) ────────
+function WeekdayChart({ focusLog, tasks }: { focusLog: FocusLogEntry[]; tasks: Task[] }) {
+  const data = useMemo(() => {
+    const names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    return names.map((label, i) => {
+      let minutes = 0
+      let count = 0
+      focusLog.forEach((e) => {
+        const d = new Date(`${e.date}T00:00:00`)
+        if (!Number.isNaN(d.getTime()) && (d.getDay() + 6) % 7 === i) minutes += e.minutes
+      })
+      tasks.forEach((t) => {
+        if (t.status === "done" && t.completedAt) {
+          const d = new Date(`${t.completedAt}T00:00:00`)
+          if (!Number.isNaN(d.getTime()) && (d.getDay() + 6) % 7 === i) count++
+        }
+      })
+      return { label, minutes, count }
+    })
+  }, [focusLog, tasks])
+
+  const W = 640
+  const H = 210
+  const PAD_X = 30
+  const PAD_Y = 26
+  const innerW = W - PAD_X * 2
+  const innerH = H - PAD_Y * 2
+  const step = innerW / data.length
+  const barW = Math.min(step / 4, 14)
+  const maxMins = Math.max(...data.map((d) => d.minutes), 1)
+  const maxTasks = Math.max(...data.map((d) => d.count), 1)
+  const x = (i: number) => PAD_X + step * (i + 0.5)
+  const yM = (v: number) => PAD_Y + innerH - (v / maxMins) * innerH
+  const yT = (v: number) => PAD_Y + innerH - (v / maxTasks) * innerH
+
+  return (
+    <div>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Weekly Rhythm</p>
+          <p className="mt-1 text-sm text-muted-foreground">Your busiest days, across all history.</p>
+        </div>
+        <span className="flex size-9 items-center justify-center rounded-lg bg-focus/15 text-focus">
+          <Repeat className="size-4.5" />
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 h-44 w-full" role="img" aria-label="Productivity by day of week">
+        {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+          <line
+            key={t}
+            x1={PAD_X}
+            x2={W - PAD_X}
+            y1={PAD_Y + innerH * t}
+            y2={PAD_Y + innerH * t}
+            stroke="var(--border)"
+            strokeDasharray="4 6"
+          />
+        ))}
+        {data.map((d, i) => (
+          <g key={i}>
+            <rect
+              x={x(i) - barW - 1.5}
+              y={yM(d.minutes)}
+              width={barW}
+              height={PAD_Y + innerH - yM(d.minutes)}
+              rx={Math.min(3, barW / 2)}
+              fill="var(--primary)"
+              opacity="0.85"
+            />
+            <rect
+              x={x(i) + 1.5}
+              y={yT(d.count)}
+              width={barW}
+              height={PAD_Y + innerH - yT(d.count)}
+              rx={Math.min(3, barW / 2)}
+              fill="var(--focus)"
+              opacity="0.85"
+            />
+            <text x={x(i)} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[10px]">
+              {d.label}
+            </text>
+          </g>
+        ))}
+      </svg>
+      <div className="mt-1 flex items-center justify-center gap-4">
+        <Legend color="var(--primary)" label="Focus min" />
+        <Legend color="var(--focus)" label="Tasks done" />
+      </div>
+    </div>
+  )
+}
+
+// ── By project: task volume per project, completed vs open ─────────────
+function ProjectBars({ tasks }: { tasks: Task[] }) {
+  const rows = useMemo(() => {
+    const map = new Map<string, { total: number; done: number }>()
+    tasks.forEach((t) => {
+      if (!t.project) return
+      const r = map.get(t.project) ?? { total: 0, done: 0 }
+      r.total++
+      if (t.status === "done") r.done++
+      map.set(t.project, r)
+    })
+    return Array.from(map.entries())
+      .sort((a, b) => b[1].total - a[1].total)
+      .slice(0, 6)
+  }, [tasks])
+  const max = Math.max(...rows.map(([, r]) => r.total), 1)
+
+  return (
+    <div>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">By Project</p>
+          <p className="mt-1 text-sm text-muted-foreground">Task volume per project — completed vs open.</p>
+        </div>
+        <span className="flex size-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
+          <Layers className="size-4.5" />
+        </span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="mt-4 flex h-40 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-center">
+          <p className="text-sm font-medium text-foreground">No projects yet</p>
+          <p className="max-w-xs text-sm text-muted-foreground">Assign tasks to projects and their load will appear here.</p>
+        </div>
+      ) : (
+        <ul className="mt-4 flex flex-col gap-3">
+          {rows.map(([name, r]) => {
+            const donePct = r.total > 0 ? Math.round((r.done / r.total) * 100) : 0
+            return (
+              <li key={name}>
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="truncate font-medium text-foreground">{name}</span>
+                  <span className="shrink-0 text-muted-foreground tabular-nums">
+                    {r.done}/{r.total} done
+                  </span>
+                </div>
+                <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted">
+                  <div className="flex h-full">
+                    {r.done > 0 && (
+                      <div
+                        className="h-full rounded-l-full bg-success transition-all duration-300"
+                        style={{ width: `${(r.done / max) * 100}%` }}
+                      />
+                    )}
+                    {r.total - r.done > 0 && (
+                      <div
+                        className="h-full bg-primary/70 transition-all duration-300"
+                        style={{ width: `${((r.total - r.done) / max) * 100}%` }}
+                      />
+                    )}
+                  </div>
+                </div>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">{donePct}% complete</p>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }
