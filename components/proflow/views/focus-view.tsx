@@ -25,6 +25,8 @@ export function FocusView() {
     resetTimer,
     focusLog,
     xp,
+    weeklyFocusGoal,
+    setWeeklyFocusGoal,
   } = useStore()
 
   // Real today stats from recorded focus sessions — zero on a fresh install.
@@ -56,7 +58,7 @@ export function FocusView() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 p-6">
-      <PageHeader title="Focus Timer" subtitle={`Deep work session · ${sessionLabel}`} />
+      <PageHeader title="Focus Timer" subtitle={`Focus session · ${sessionLabel}`} />
 
       <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
         <Card className="flex flex-col items-center justify-center gap-6 py-10">
@@ -166,8 +168,24 @@ export function FocusView() {
           </Card>
 
           <Card className="flex flex-col gap-3">
+            <h2 className="font-semibold">Weekly focus goal</h2>
+            <Stepper
+              label="Focus hours"
+              value={weeklyFocusGoal / 60}
+              min={0}
+              max={168}
+              step={1}
+              unit="hrs"
+              onChange={(h) => setWeeklyFocusGoal(Math.max(0, Math.min(168, h)) * 60)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Your weekly focus target — the Progress page tracks it. Set to 0 to hide it there.
+            </p>
+          </Card>
+
+          <Card className="flex flex-col gap-3">
             <h2 className="font-semibold">Today</h2>
-            <Stat label="Deep work" value={`${todayMinutes > 0 ? (todayMinutes / 60).toFixed(1) : "0.0"} hrs`} tone="text-info" />
+            <Stat label="Focus" value={`${todayMinutes > 0 ? (todayMinutes / 60).toFixed(1) : "0.0"} hrs`} tone="text-info" />
             <Stat label="Sessions completed" value={String(todaySessions)} tone="text-primary" />
             <Stat label="Focus streak" value={`${focusStreak} days`} tone="text-focus" />
           </Card>
@@ -197,6 +215,7 @@ function Stepper({
   min,
   max,
   step,
+  unit = "min",
   onChange,
 }: {
   label: string
@@ -204,6 +223,7 @@ function Stepper({
   min: number
   max: number
   step: number
+  unit?: string
   onChange: (n: number) => void
 }) {
   return (
@@ -218,8 +238,8 @@ function Stepper({
         >
           <Minus className="size-3.5" />
         </button>
-        <span className="w-14 text-center text-sm font-semibold tabular-nums">
-          {value} min
+        <span className="w-16 text-center text-sm font-semibold tabular-nums">
+          {value} {unit}
         </span>
         <button
           type="button"

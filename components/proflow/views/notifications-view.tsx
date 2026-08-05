@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, CheckCheck, ListTodo, CalendarDays, Flame, Sparkles } from "lucide-react"
+import { Bell, CheckCheck, ListTodo, CalendarDays, Flame, Sparkles, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useStore, type AppNotification } from "@/components/proflow/store"
 import { Card, PageHeader } from "@/components/proflow/ui"
@@ -20,7 +20,7 @@ const toneFor: Record<AppNotification["type"], string> = {
 }
 
 export function NotificationsView() {
-  const { notifications, markRead, markAllRead } = useStore()
+  const { notifications, markRead, markAllRead, deleteNotification, clearNotifications } = useStore()
   const unread = notifications.filter((n) => !n.read).length
 
   return (
@@ -29,10 +29,22 @@ export function NotificationsView() {
         title="Notifications"
         subtitle={unread > 0 ? `${unread} unread` : "You're all caught up"}
       >
-        <Button variant="outline" size="sm" onClick={markAllRead} disabled={unread === 0}>
-          <CheckCheck className="size-4" />
-          Mark all read
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={markAllRead} disabled={unread === 0}>
+            <CheckCheck className="size-4" />
+            Mark all read
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={clearNotifications}
+            disabled={notifications.length === 0}
+            className="text-danger hover:border-danger/40 hover:bg-danger/10 hover:text-danger"
+          >
+            <Trash2 className="size-4" />
+            Clear all
+          </Button>
+        </div>
       </PageHeader>
 
       <div className="mt-6 flex flex-col gap-2">
@@ -56,15 +68,25 @@ export function NotificationsView() {
                 <p className="mt-0.5 text-sm text-muted-foreground text-pretty">{n.desc}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{n.time}</p>
               </div>
-              {!n.read && (
+              <div className="flex shrink-0 items-center gap-1">
+                {!n.read && (
+                  <button
+                    type="button"
+                    onClick={() => markRead(n.id)}
+                    className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    Mark read
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => markRead(n.id)}
-                  className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  onClick={() => deleteNotification(n.id)}
+                  aria-label="Delete notification"
+                  className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
                 >
-                  Mark read
+                  <Trash2 className="size-3.5" />
                 </button>
-              )}
+              </div>
             </Card>
           )
         })}

@@ -35,7 +35,7 @@ const steps: Step[] = [
     icon: LayoutDashboard,
     title: "Dashboard — Your Command Centre",
     description:
-      "See your daily progress at a glance: completion rate, habit streaks, deep-work hours, overdue tasks, goal progress, and upcoming events. The Focus Hours chart shows your last 7 days of deep work.",
+      "See your daily progress at a glance: completion rate, habit streaks, focus hours, overdue tasks, goal progress, and upcoming events. The Focus Hours chart shows your last 7 days of focus.",
   },
   {
     icon: ListTodo,
@@ -53,7 +53,7 @@ const steps: Step[] = [
     icon: Timer,
     title: "Focus Timer",
     description:
-      "Use the Pomodoro timer in the topbar for deep work sessions. Start, pause, or skip between focus and break intervals. Track your total focus hours on the Dashboard.",
+      "Use the Pomodoro timer in the topbar for focus sessions. Start, pause, or skip between focus and break intervals. Track your total focus hours on the Dashboard.",
   },
   {
     icon: Command,

@@ -52,8 +52,6 @@ export function SettingsView() {
     setTheme,
     prefs,
     togglePref,
-    weeklyFocusGoal,
-    setWeeklyFocusGoal,
     startTour,
     resetAllData,
     achievements,
@@ -69,7 +67,6 @@ export function SettingsView() {
   const [pendingImport, setPendingImport] = useState<Record<string, string> | null>(null)
   // Local string state so the user can clear the field while typing without the
   // controlled value snapping back to "0" on every keystroke.
-  const [goalHoursInput, setGoalHoursInput] = useState(() => String(weeklyFocusGoal / 60))
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -83,32 +80,53 @@ export function SettingsView() {
     e.target.value = ""
   }
 
-  const themes = ["Purple", "Blue", "Green", "Amber"]
-
-  // ── Data backup: export / import everything stored under the proflow- prefix ──
+  const themes = ["Purple", "Blue", "Green", "Amber"]      // ── Data backup: export / import everything stored under the proflow- prefix ──
   // All app state (tasks, habits, goals, events, notes, focus log, settings,
   // XP, badges) lives in localStorage under "proflow-" keys. Export collects
   // every one of those keys into a single JSON file; import validates the file,
   // writes the keys back, and reloads so the store re-initializes from them.
   const handleExport = async () => {
     try {
-      const data: Record<string, string> = {}
+      // Parse each stored value so the backup is a clean, structured JSON
+      // (real arrays/objects, e.g. "tasks": [ {…} ]) instead of a bag of
+      // escaped JSON strings — easier to read and edit by hand.
+      const data: Record<string, unknown> = {}
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i)
         if (k && k.startsWith("proflow-")) {
           const raw = localStorage.getItem(k)
-          if (raw !== null) data[k] = raw
+          if (raw !== null) {
+            try {
+              data[k.slice("proflow-".length)] = JSON.parse(raw)
+            } catch {
+              data[k.slice("proflow-".length)] = raw
+            }
+          }
         }
       }
       const fileName = `proflow-backup-${new Date().toISOString().slice(0, 10)}.json`
-      const content = JSON.stringify(data, null, 2)
+      const content = JSON.stringify(
+        { format: "proflow-backup", version: 2, exportedAt: new Date().toISOString(), data },
+        null,
+        2,
+      )
 
       // Android APK: the WebView ignores browser-style anchor downloads, so the
       // native Backup plugin writes the JSON straight to Downloads instead.
       if (isCapacitor()) {
         const backup = (window as any).Capacitor?.Plugins?.Backup
-        if (!backup?.saveBackup) throw new Error("Backup plugin not available — update the app")
-        await backup.saveBackup({ fileName, content })
+        if (backup?.saveBackup) {
+          await backup.saveBackup({ fileName, content })
+        } else {
+          // Older APKs don't expose the native plugin — fall back to the Web
+          // Share API so the share sheet can save the file (Files/Drive/etc).
+          const nav = navigator as any
+          const file = new File([content], fileName, { type: "application/json" })
+          if (!nav.canShare?.({ files: [file] })) {
+            throw new Error("This build can't export files — install the latest update or use the desktop app")
+          }
+          await nav.share({ files: [file], title: "ProFlow backup" })
+        }
         setExported(true)
         setTimeout(() => setExported(false), 2500)
         setImportError(null)
@@ -142,7 +160,10 @@ export function SettingsView() {
       setImportError(null)
     } catch (err) {
       const msg = (err as any)?.message || ""
-      if (!/cancell?ed/i.test(msg)) {
+      // The Web Share sheet throws AbortError when the user cancels — treat it
+      // like the desktop dialog cancel (no error banner), by name or message.
+      const isCancel = /cancell?ed/i.test(msg) || (err as any)?.name === "AbortError"
+      if (!isCancel) {
         setImportError(`Export failed: ${msg || "your data is safe, try again"}`)
       }
     }
@@ -160,15 +181,26 @@ export function SettingsView() {
           setImportError("That doesn't look like a ProFlow backup file.")
           return
         }
-        // Only accept proflow-* keys so a foreign JSON can't pollute the app.
+        // Accept both backup shapes; foreign keys still can't pollute the app.
         const entries: Record<string, string> = {}
         let count = 0
-        Object.entries(parsed).forEach(([key, value]) => {
-          if (key.startsWith("proflow-") && typeof value === "string") {
-            entries[key] = value
-            count++
-          }
-        })
+        const collect = (key: string, value: unknown) => {
+          const stored = typeof value === "string" ? value : JSON.stringify(value)
+          if (stored === undefined) return
+          entries[key] = stored
+          count++
+        }
+        if (parsed.format === "proflow-backup" && parsed.data && typeof parsed.data === "object" && !Array.isArray(parsed.data)) {
+          // v2 structured backup: { format, version, exportedAt, data: { tasks: [...], … } }
+          Object.entries(parsed.data as Record<string, unknown>).forEach(([key, value]) => {
+            collect(`proflow-${key}`, value)
+          })
+        } else {
+          // v1 raw backup: flat { "proflow-tasks": "[…escaped json…]" } map.
+          Object.entries(parsed).forEach(([key, value]) => {
+            if (key.startsWith("proflow-") && typeof value === "string") collect(key, value)
+          })
+        }
         if (count === 0) {
           setImportError("No ProFlow data found in that file.")
           setPendingImport(null)
@@ -311,33 +343,6 @@ export function SettingsView() {
               </div>
             ))}
           </div>
-        </Card>
-
-        <Card>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Deep work goal</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            How much deep focus you want to hit each week. The Progress page shows your progress toward this goal.
-          </p>
-          <div className="mt-4 flex items-center gap-3">
-            <input
-              type="number"
-              min={0}
-              max={168}
-              step={0.5}
-              value={goalHoursInput}
-              onChange={(e) => {
-                setGoalHoursInput(e.target.value)
-                const hours = Number(e.target.value)
-                if (Number.isFinite(hours)) setWeeklyFocusGoal(Math.max(0, Math.min(168, hours)) * 60)
-              }}
-              onBlur={() => setGoalHoursInput(String(weeklyFocusGoal / 60))}
-              className="w-32 rounded-lg border border-border bg-secondary/40 px-3 py-2 text-sm font-semibold text-foreground tabular-nums outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
-            />
-            <span className="text-sm text-muted-foreground">hours per week</span>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Set to 0 to hide the goal from the Progress page.
-          </p>
         </Card>
 
         {/* Achievement badges — permanent gallery of earned milestones */}

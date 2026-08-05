@@ -33,7 +33,7 @@ const workspace: NavItem[] = [
 const tools: NavItem[] = [
   { id: "notes", label: "Notes & Docs", icon: FileText, hint: "Quick notes with tags" },
   { id: "habits", label: "Habits & Goals", icon: Target, hint: "Track daily routines and goal progress" },
-  { id: "focus", label: "Focus Timer", icon: Timer, hint: "Pomodoro sessions for deep work" },
+  { id: "focus", label: "Focus Timer", icon: Timer, hint: "Pomodoro sessions for focus" },
 ]
 
 export function Sidebar() {

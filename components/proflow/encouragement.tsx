@@ -36,7 +36,7 @@ function nudge(
   }
   if (doneTasks >= 5) return `🔥 ${doneTasks} tasks done today — you're on fire.`
   if (doneTasks >= 3) return `✨ ${doneTasks} tasks knocked out. Nice momentum!`
-  if (weekHours >= 5) return `💪 ${weekHours} hrs of deep work this week — impressive.`
+  if (weekHours >= 5) return `💪 ${weekHours} hrs of focus this week — impressive.`
   if (habitsTotal > 0 && habitsDone === habitsTotal) {
     return `✅ All ${habitsTotal} habit${habitsTotal > 1 ? "s" : ""} done today. Perfect attendance!`
   }

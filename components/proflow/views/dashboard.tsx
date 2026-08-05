@@ -133,7 +133,7 @@ export function Dashboard() {
   })
   const weekMax = Math.max(100, ...weekMomentum.map((d) => d.score))
 
-  // Real deep-work hours: sum of completed focus sessions over the last 7 days
+  // Real focus hours: sum of completed focus sessions over the last 7 days
   // (including today). Starts at 0 on a fresh install.
   const weekFocusHours = useMemo(() => {
     const now = new Date()
@@ -324,11 +324,11 @@ export function Dashboard() {
             </Card>
             </div>
 
-            {/* Deep Work */}
+            {/* Focus */}
             <div className="animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-both" style={{ animationDelay: "200ms" }}>
             <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
               <div className="flex items-start justify-between">
-                <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Deep Work</p>
+                <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Focus</p>
                 <span className="flex size-9 items-center justify-center rounded-lg bg-info/15 text-info">
                   <Clock className="size-4.5" />
                 </span>
@@ -339,7 +339,7 @@ export function Dashboard() {
               </div>
               <p className="mt-2 text-sm text-muted-foreground">Last 7 days · logged from completed focus sessions</p>
               <p className="mt-4 text-xs text-muted-foreground">
-                {weekFocusHours > 0 ? `${weekFocusHours} hrs of deep work this week` : "Complete a focus session to start tracking"}
+                {weekFocusHours > 0 ? `${weekFocusHours} hrs of focus this week` : "Complete a focus session to start tracking"}
               </p>
             </Card>
             </div>
@@ -500,7 +500,7 @@ export function Dashboard() {
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
                 {weekFocusHours > 0
-                  ? "Deep work logged automatically when you complete a focus session."
+                  ?                "Focus time logged automatically when you complete a session."
                   : "No focus sessions yet — start the Focus Timer to build this week's total."}
               </p>
             </Card>
@@ -560,8 +560,14 @@ export function Dashboard() {
 function UpcomingCard({ events, setView }: { events: EventItem[]; setView: (v: View) => void }) {
   const today = todayStr()
   const todayEvents = useMemo(() => events.filter((e) => e.date === today), [events, today])
-  const sorted = useMemo(() => [...events].filter((e) => e.date >= today).sort((a, b) => a.date.localeCompare(b.date)), [events, today])
-  const nextEvent = sorted[0]
+  // Only events from today onward are "upcoming" — past/completed events must
+  // not inflate the count (the count and the "Next" line share this filter so
+  // they can never disagree).
+  const upcoming = useMemo(
+    () => [...events].filter((e) => e.date >= today).sort((a, b) => a.date.localeCompare(b.date)),
+    [events, today],
+  )
+  const nextEvent = upcoming[0]
   const blocksToday = todayEvents.filter((e) => e.hasBlock).length
 
   return (
@@ -573,8 +579,8 @@ function UpcomingCard({ events, setView }: { events: EventItem[]; setView: (v: V
         </span>
       </div>
       <div className="mt-3 flex items-end gap-2">
-        <span className="text-5xl font-bold tracking-tight">{events.length}</span>
-        <span className="mb-1.5 text-sm text-muted-foreground">events</span>
+        <span className="text-5xl font-bold tracking-tight">{upcoming.length}</span>
+        <span className="mb-1.5 text-sm text-muted-foreground">upcoming</span>
       </div>
       {nextEvent ? (
         <p className="mt-2 text-sm text-muted-foreground">

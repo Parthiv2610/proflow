@@ -64,7 +64,7 @@ export function ProgressView() {
       (t) => t.status === "done" && !!t.completedAt && t.completedAt >= mondayKey,
     ).length
 
-    // Focus sessions & deep-work minutes this week, plus distinct active days.
+    // Focus sessions & minutes this week, plus distinct active days.
     let sessions = 0
     let minutes = 0
     const activeDays = new Set<string>()
@@ -113,7 +113,7 @@ export function ProgressView() {
     const bump = (date: string, n: number) => {
       counts[date] = (counts[date] ?? 0) + n
     }
-    // Focus sessions count double (deep work), completed tasks count once.
+    // Focus sessions count double, completed tasks count once.
     focusLog.forEach((e) => bump(e.date, e.sessions * 2))
     tasks.forEach((t) => {
       if (t.status === "done" && t.completedAt) bump(t.completedAt, 1)
@@ -263,7 +263,7 @@ export function ProgressView() {
             />
             <BestTile
               icon={<TrendingUp className="size-4" />}
-              label="Deep work"
+              label="Focus"
               value={`${week.hours}h`}
               tone="text-success"
             />
@@ -274,13 +274,13 @@ export function ProgressView() {
               tone="text-focus"
             />
           </div>
-          {/* Weekly deep work goal */}
+          {/* Weekly focus goal */}
           {weeklyFocusGoal > 0 && (
             <div className="mt-4">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
                   <TrendingUp className="size-3.5" />
-                  Deep work goal
+                  Focus goal
                 </span>
                 <span className="font-medium text-foreground tabular-nums">
                   {week.hours}h / {(weeklyFocusGoal / 60).toFixed(1).replace(/\.0$/, "")}h
@@ -294,7 +294,7 @@ export function ProgressView() {
             </div>
           )}
           <p className="mt-4 text-xs text-muted-foreground">
-            Everything you've done this week (Monday–Sunday) — resets each Monday. Set your deep work goal in Settings.
+            Everything you've done this week (Monday–Sunday) — resets each Monday. Set your focus goal on the Focus Timer page.
           </p>
         </Card>
       </div>
@@ -601,7 +601,7 @@ function ActivityChart({ focusLog, tasks }: { focusLog: FocusLogEntry[]; tasks: 
   )
 }
 
-// ── Deep-work trend: focus minutes per week vs the weekly goal ─────────
+// ── Focus trend: focus minutes per week vs the weekly goal ─────────
 function WeeklyTrend({ focusLog, weeklyFocusGoal }: { focusLog: FocusLogEntry[]; weeklyFocusGoal: number }) {
   const data = useMemo(() => {
     const now = new Date()
@@ -642,7 +642,7 @@ function WeeklyTrend({ focusLog, weeklyFocusGoal }: { focusLog: FocusLogEntry[];
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Deep Work Trend</p>
+          <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Focus Trend</p>
           <p className="mt-1 text-sm text-muted-foreground">Focus hours per week vs your {goalHours}h goal.</p>
         </div>
         <span className="flex size-9 items-center justify-center rounded-lg bg-success/15 text-success">

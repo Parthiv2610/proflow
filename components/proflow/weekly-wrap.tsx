@@ -29,7 +29,7 @@ function nudge(
   if (tasksDone >= 15) return `🚀 ${tasksDone} tasks closed out. That's serious momentum.`
   if (tasksDone >= 8) return `✨ ${tasksDone} tasks done — steady and consistent.`
   if (bestStreak >= 5) return `🌱 ${bestStreak}-day habit streak — showing up every day counts.`
-  if (focusHours >= 5) return `💪 ${focusHours} hrs of deep work banked this week.`
+  if (focusHours >= 5) return `💪 ${focusHours} hrs of focus banked this week.`
   if (habitsDone > 0) return `🌤️ ${habitsDone} habit${habitsDone > 1 ? "s" : ""} kept up this week.`
   return `🌤️ No pressure — next week is a fresh page, and even one small win counts.`
 }
@@ -110,7 +110,7 @@ export function WeeklyWrap() {
       <div className="relative mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Tasks done" value={String(wrap.tasksDone)} />
         <Stat label="Habits active" value={String(wrap.habitsDone)} />
-        <Stat label="Deep work" value={`${wrap.focusHours} hrs`} />
+        <Stat label="Focus" value={`${wrap.focusHours} hrs`} />
         <Stat label="Focus sessions" value={String(wrap.sessions)} />
       </div>
       <p className="relative mt-3 text-xs text-muted-foreground">

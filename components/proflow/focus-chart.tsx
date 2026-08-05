@@ -75,7 +75,7 @@ export function FocusChart() {
           <div className="flex h-56 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-center">
             <p className="text-sm font-medium text-foreground">No focus sessions yet</p>
             <p className="max-w-sm text-sm text-muted-foreground">
-              Start the Focus Timer and complete a session — your deep work hours and completed
+              Start the Focus Timer and complete a session — your focus hours and completed
               tasks will appear here automatically.
             </p>
           </div>

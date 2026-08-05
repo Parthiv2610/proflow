@@ -9,7 +9,7 @@ const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono'
 export const metadata: Metadata = {
   title: 'ProFlow — Your All-in-One Productivity Workspace',
   description:
-    'ProFlow is a productivity workspace for tasks, projects, calendar, notes, habits, goals, and deep-work focus sessions.',
+    'ProFlow is a productivity workspace for tasks, projects, calendar, notes, habits, goals, and focus sessions.',
   generator: 'v0.app',
 }
 

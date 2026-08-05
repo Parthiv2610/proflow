@@ -576,7 +576,7 @@ export function CalendarView() {
             <QuickEventForm
               onSubmit={createSubmit}
               onCancel={() => setCreating(null)}
-              placeholder="e.g. Deep work session"
+              placeholder="e.g. Focus session"
             />
           </Modal>
         </>

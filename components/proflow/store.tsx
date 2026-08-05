@@ -171,6 +171,8 @@ type Store = {
   notifications: AppNotification[]
   markRead: (id: string) => void
   markAllRead: () => void
+  deleteNotification: (id: string) => void
+  clearNotifications: () => void
 
   userName: string
   setUserName: (n: string) => void
@@ -207,7 +209,7 @@ type Store = {
   sessionLabel: string
   focusMinutes: number
   breakMinutes: number
-  weeklyFocusGoal: number // minutes of deep work targeted per week
+  weeklyFocusGoal: number // minutes of focus targeted per week
   setWeeklyFocusGoal: (minutes: number) => void
   focusLog: FocusLogEntry[]
   recordFocusSession: () => void
@@ -371,7 +373,7 @@ function ledgerSum(events: { amount?: number }[]): number {
 
 const DEFAULT_FOCUS_MINUTES = 25
 const DEFAULT_BREAK_MINUTES = 5
-const DEFAULT_WEEKLY_FOCUS_GOAL = 300 // 5 hours of deep work per week
+const DEFAULT_WEEKLY_FOCUS_GOAL = 300 // 5 hours of focus per week
 
 // Sidebar layout thresholds — the sidebar collapses by default on smaller windows.
 export const SIDEBAR_DRAWER_MAX = 1024 // below this width the sidebar is an overlay drawer
@@ -398,6 +400,35 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [events, setRawEvents] = useLocalStorage<EventItem[]>("events", initialEvents)
   const [notes, setRawNotes] = useLocalStorage<Note[]>("notes", initialNotes)
   const [notifications, setRawNotifications] = useLocalStorage<AppNotification[]>("notifications", initialNotifications)
+
+  // Every OS toast (lib/notify showNotification) is ALSO recorded here as an
+  // in-app notification — the bell badge and Notifications page render this
+  // list, and it's the only notification channel that works on Android (the
+  // WebView has no OS Notification API). History is capped so it can't grow
+  // forever.
+  useEffect(() => {
+    const onToast = (e: Event) => {
+      const detail = (e as CustomEvent<{ title?: string; body?: string }>).detail
+      const title = detail?.title || "ProFlow"
+      const body = detail?.body || ""
+      const item: AppNotification = {
+        id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        title,
+        desc: body,
+        time: new Date().toLocaleString([], {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        }),
+        read: false,
+        type: "system",
+      }
+      setRawNotifications((prev) => [item, ...prev].slice(0, 50))
+    }
+    window.addEventListener("proflow-notification", onToast)
+    return () => window.removeEventListener("proflow-notification", onToast)
+  }, [setRawNotifications])
   const [focusLog, setRawFocusLog] = useLocalStorage<FocusLogEntry[]>("focusLog", [])
 
   // ── XP & shields (event ledgers) ──────────────────────────────
@@ -915,7 +946,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [running, setRunning] = useState(false)
   const [pomodoro, setPomodoro] = useState(1)
   const totalPomodoros = 4
-  const sessionLabel = "Deep Work"
+  const sessionLabel = "Focus"
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -940,7 +971,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setSecondsLeft(total)
   }, [focusMinutes, breakMinutes])
 
-  // Real deep-work tracking: every COMPLETED focus interval (timer ran down to
+  // Real focus tracking: every COMPLETED focus interval (timer ran down to
   // zero) counts toward the dashboard stats and the 7-day chart. Skipped or
   // stopped sessions don't count. Persisted via localStorage.
   const recordFocusSession = useCallback(() => {
@@ -965,14 +996,14 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   // Session end: chime / notify / auto-advance according to preferences.
   useEffect(() => {
     if (secondsLeft !== 0 || !running) return
-    // A finished FOCUS interval is real deep-work time.
+    // A finished FOCUS interval is real focus time.
     if (mode === "focus") recordFocusSession()
     const prefOn = (id: string) => prefs.some((p) => p.id === id && p.on)
     if (prefOn("soundEnd")) playChime()
     if (prefOn("focusReminders")) {
       showNotification(
         mode === "focus" ? "Focus session complete" : "Break over",
-        mode === "focus" ? "Great work — time for a break!" : "Ready for another deep-work session?",
+        mode === "focus" ? "Great work — time for a break!" : "Ready for another focus session?",
       )
     }
     if (prefOn("autoBreaks")) {
@@ -1324,6 +1355,14 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
   }, [])
 
+  const deleteNotification = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id))
+  }, [])
+
+  const clearNotifications = useCallback(() => {
+    setNotifications([])
+  }, [])
+
   const value = useMemo<Store>(
     () => ({
       view,
@@ -1355,6 +1394,8 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       notifications,
       markRead,
       markAllRead,
+      deleteNotification,
+      clearNotifications,
       userName,
       setUserName,
       avatarUrl,
@@ -1408,7 +1449,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     [
       view, search, tasks, projects, addTask, deleteTask, reorderTasks, cycleTaskStatus, setTaskStatus, habits, addHabit,
       deleteHabit, toggleHabit, goals, addGoal, updateGoal, deleteGoal, events, addEvent, updateEvent, deleteEvent,
-      notes, addNote, deleteNote, notifications, markRead, markAllRead,
+      notes, addNote, deleteNote, notifications, markRead, markAllRead, deleteNotification, clearNotifications,
       focusMode, toggleFocusMode, sidebarOpen, toggleSidebar, closeSidebar, userName, setUserName, avatarUrl, setAvatarUrl,
       theme, setTheme, prefs, togglePref, showTour, dismissTour, startTour, sessionCount, resetAllData,
       secondsLeft, totalSeconds, running, mode, pomodoro, sessionLabel,
