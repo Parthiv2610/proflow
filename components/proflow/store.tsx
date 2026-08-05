@@ -47,6 +47,12 @@ export type Habit = {
   streak: number
   doneToday: boolean
   week: boolean[]
+  shields: number // mini shields owned for THIS habit (bought with XP)
+  // "YYYY-MM-DD" the habit last earned its daily completion XP. Cleared when
+  // the day is unchecked so an accidental check can be fully undone (the XP is
+  // revoked through the ledger, and a later re-check legitimately earns again).
+  // Check + uncheck nets exactly 0 XP, so this can't be farmed.
+  rewardedDay: string
 }
 
 export type Goal = {
@@ -209,6 +215,7 @@ type Store = {
   addXp: (amount: number) => void
   streakShields: number
   buyShield: () => boolean
+  buyHabitShield: (id: string) => boolean
 
   // achievements & milestones
   achievements: Record<string, string>
@@ -241,7 +248,30 @@ export function todayKey() {
 // ── XP & levels ────────────────────────────────────────────
 // Purely positive reinforcement: you earn XP by completing things, never lose
 // it, and level names are cheerful. Nothing here ever punishes a missed day.
-const LEVEL_NAMES = ["Beginner", "Novice", "Rookie", "Builder", "Achiever", "Expert", "Master", "Legend"]
+// One name for every level 1–100, in 10 themed tiers. `levelName()` clamps at
+// the last entry, so anything past level 100 keeps the top title.
+const LEVEL_NAMES = [
+  // 1–10 Beginning
+  "Beginner", "Novice", "Rookie", "Starter", "Apprentice", "Explorer", "Learner", "Trainee", "Striver", "Go-Getter",
+  // 11–20 Building
+  "Builder", "Maker", "Crafter", "Achiever", "Doer", "Climber", "Grinder", "Forger", "Driver", "Momentum",
+  // 21–30 Rising
+  "Riser", "Soarer", "Ascender", "Rocket", "Comet", "Streak", "Surge", "Wave", "Blaze", "On Fire",
+  // 31–40 Performing
+  "Performer", "Producer", "Finisher", "Completer", "Executor", "Operator", "Specialist", "Skilled", "Polished", "Refined",
+  // 41–50 Pro
+  "Pro", "Expert", "Ace", "Prodigy", "Virtuoso", "Maestro", "Sharpshooter", "Trailblazer", "Pioneer", "Vanguard",
+  // 51–60 Elite
+  "Elite", "Premier", "Top Tier", "Peak", "Summit", "Apex", "Crown", "Sovereign", "Paramount", "Unstoppable",
+  // 61–70 Master
+  "Master", "Grandmaster", "Sage", "Guru", "Oracle", "Wizard", "Sorcerer", "Titan", "Colossus", "Giant",
+  // 71–80 Champion
+  "Champion", "Victor", "Conqueror", "Dominator", "Gladiator", "Warrior", "Knight", "Paladin", "Sentinel", "Guardian",
+  // 81–90 Legend
+  "Legend", "Icon", "Myth", "Fable", "Epic", "Hero", "Immortal", "Eternal", "Celestial", "Divine",
+  // 91–100 Cosmic
+  "Cosmic", "Galactic", "Stellar", "Supernova", "Nebula", "Infinity", "Omniscient", "Ascended", "Transcendent", "ProFlow Legend",
+]
 
 /** Cumulative XP needed to BE at the start of `level` (level 1 = 0). */
 export function xpForLevel(level: number): number {
@@ -266,17 +296,22 @@ export function xpIntoLevel(xp: number): number {
 }
 
 export function levelName(level: number): string {
-  const names = ["Beginner", "Novice", "Rookie", "Builder", "Achiever", "Expert", "Master", "Legend"]
-  return names[Math.min(level - 1, names.length - 1)] ?? `Level ${level}`
+  return LEVEL_NAMES[Math.min(level - 1, LEVEL_NAMES.length - 1)] ?? `Level ${level}`
 }
 
 // ── Streak shields ────────────────────────────────────────────
 // Insurance against a missed habit day, bought with XP. A shield absorbs one
 // missed scheduled day so the streak survives; you can hold at most 2 at once.
-// Price sits at the Level-3 milestone (~3 days of typical use) so shields are
-// precious but reachable.
-export const SHIELD_PRICE = 300
+// Price sits just past the Level-3 milestone (~3-4 days of typical use) so
+// shields are precious but reachable.
+export const SHIELD_PRICE = 400
 export const MAX_SHIELDS = 2
+
+// Per-habit "mini" shields — cheaper than the shared pool (which protects any
+// habit) because each one is locked to a single habit. Bought per habit; the
+// XP is refunded through the ledger if the habit is deleted.
+export const HABIT_SHIELD_PRICE = 100
+export const MAX_HABIT_SHIELDS = 2
 
 // Free shield as a level-up prize at every 5th level (5, 10, 15, …). The first
 // lands at 1000 XP — over three shields' worth of earning — then rewards space
@@ -437,6 +472,16 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   // A ref mirror makes the cap check race-safe against rapid clicks (the state
   // closure can be stale within one render frame); XP is already ref-authoritative.
   const shieldsRef = useRef(streakShields)
+  // Per-habit mini shields need the same race-safe guard: `habits` state can be
+  // stale within one render frame, so two fast taps on a buy button would both
+  // pass the cap check and double-charge XP. This ref mirrors the live counts.
+  const miniShieldsRef = useRef<Record<string, number>>({})
+  useEffect(() => {
+    miniShieldsRef.current = habits.reduce<Record<string, number>>((acc, h) => {
+      acc[h.id] = h.shields ?? 0
+      return acc
+    }, {})
+  }, [habits])
   // Guards the day-rollover against double-processing within one render frame.
   const habitCheckRef = useRef("")
 
@@ -626,6 +671,31 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     return true
   }, [setXp, setStreakShields, setXpEvents, setShieldEvents])
 
+  // Buy a MINI shield for ONE habit — like a streak shield, but it only
+  // protects that habit's streak (absorbs one missed scheduled day for it).
+  // Cheaper than the shared pool because it's locked to a single habit.
+  const buyHabitShield = useCallback(
+    (id: string) => {
+      const h = habits.find((x) => x.id === id)
+      if (!h) return false
+      // Ref-mirrored count: two rapid taps in one render frame both see the same
+      // stale `habits` closure — the ref is incremented synchronously so the
+      // second tap sees the first one's shield and hits the cap (or spends XP
+      // once more only if a slot is genuinely left).
+      const owned = miniShieldsRef.current[id] ?? 0
+      if (owned >= MAX_HABIT_SHIELDS || xpRef.current < HABIT_SHIELD_PRICE) return false
+      xpRef.current -= HABIT_SHIELD_PRICE
+      const stamp = Date.now()
+      const rand = Math.random().toString(36).slice(2, 8)
+      setXpEvents((prev) => [...prev, { id: `spend-${stamp}-${rand}`, amount: -HABIT_SHIELD_PRICE }])
+      setXp(xpRef.current)
+      miniShieldsRef.current = { ...miniShieldsRef.current, [id]: owned + 1 }
+      setRawHabits((prev) => prev.map((x) => (x.id === id ? { ...x, shields: (x.shields ?? 0) + 1 } : x)))
+      return true
+    },
+    [habits, setXp, setXpEvents, setRawHabits],
+  )
+
   // Projects derived from real task data — no hardcoded demo projects. A task
   // can carry any project name; the sidebar/tasks view only ever shows projects
   // the user has actually used.
@@ -676,6 +746,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       return
     }
     let shieldsLeft = shieldsRef.current
+    let miniUsed = 0
     const useEvents: ShieldEvent[] = []
     const next = habits.map((h) => {
       const base = { ...h, doneToday: false }
@@ -693,29 +764,41 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
         }
       })
       if (missedDays.length === 0) return base
-      // Absorb one missed day per shield held. Each absorption records a
+      // Absorb one missed day per shield held. Shared-pool absorptions record a
       // deterministic event (date + habit) so the same missed day is never
-      // charged twice within a session.
+      // charged twice; the habit's OWN mini shields are consumed from the habit
+      // itself (the day check runs once per day, so they can't double-charge).
       const uncovered = missedDays.filter(
         (d) => !shieldEventsRef.current.some((e) => e.id === `use:${d}:${h.id}`),
       )
       let absorbed = missedDays.length - uncovered.length
-      for (const d of uncovered) {
+      // 1) This habit's own mini shields absorb first — one missed day each.
+      const ownShields = h.shields ?? 0
+      const ownUsed = Math.min(ownShields, uncovered.length)
+      miniUsed += ownUsed
+      absorbed += ownUsed
+      // 2) Whatever's still uncovered falls back to the shared pool.
+      for (const d of uncovered.slice(ownUsed)) {
         if (shieldsLeft <= 0) break
         useEvents.push({ id: `use:${d}:${h.id}`, amount: -1 })
         shieldsLeft -= 1
         absorbed++
       }
       // Not enough shields to cover every missed day → the streak breaks.
-      return absorbed < missedDays.length ? { ...base, streak: 0 } : base
+      return absorbed < missedDays.length
+        ? { ...base, streak: 0, shields: ownShields - ownUsed }
+        : { ...base, shields: ownShields - ownUsed }
     })
-    // used = consumptions recorded this session (deduped by event id).
+    // used = shared-pool consumptions recorded this session (deduped by event id).
     const used = useEvents.length
-    if (used > 0) {
+    if (used > 0 || miniUsed > 0) {
       shieldsRef.current = shieldsLeft
       setShieldEvents((prev) => [...prev, ...useEvents])
       setStreakShields(shieldsLeft)
-      showNotification("ProFlow", `🛡️ ${used} shield${used > 1 ? "s" : ""} used to keep your streak${used > 1 ? "s" : ""} alive!`)
+      const bits: string[] = []
+      if (used > 0) bits.push(`${used} shared shield${used > 1 ? "s" : ""}`)
+      if (miniUsed > 0) bits.push(`${miniUsed} mini shield${miniUsed > 1 ? "s" : ""}`)
+      showNotification("ProFlow", `🛡️ ${bits.join(" + ")} used to keep your streaks alive!`)
       celebrate()
     }
     setHabits(next)
@@ -962,6 +1045,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setXp(0)
     setRawShieldEvents([])
     shieldsRef.current = 0
+    miniShieldsRef.current = {}
     setStreakShields(0)
     setRawLastHabitCheck("")
     shieldMilestoneRef.current = 0
@@ -1056,8 +1140,9 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
             ? "done"
             : "todo"
         : "todo"
-      // Reward + cheer only when a task is actually completed.
-      if (t && t.status !== "done" && next === "done") {
+      // Reward + cheer only when a task is actually completed — and only the
+      // first completion of the day, so done → todo → done can't farm XP.
+      if (t && t.status !== "done" && next === "done" && t.completedAt !== todayKey()) {
         addXp(10)
         celebrate()
         if (!t.completedAt) checkTaskMilestones() // first-time completion counts toward 10/50/100
@@ -1081,7 +1166,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const setTaskStatus = useCallback(
     (id: string, status: TaskStatus) => {
       const t = tasks.find((x) => x.id === id)
-      if (t && t.status !== "done" && status === "done") {
+      if (t && t.status !== "done" && status === "done" && t.completedAt !== todayKey()) {
         addXp(10)
         celebrate()
         if (!t.completedAt) checkTaskMilestones()
@@ -1102,37 +1187,85 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     [tasks, addXp, checkTaskMilestones],
   )
 
+  // Marking a habit done pays out once per day; unchecking is a FULL undo — the
+  // day's XP is revoked through the same ledger (mirroring the +5) and the
+  // streak credit removed, so an accidental check costs nothing. Check + uncheck
+  // nets exactly 0 XP and 0 streak, so toggling can't farm either.
   const toggleHabit = useCallback(
     (id: string) => {
       const h = habits.find((x) => x.id === id)
-      // Reward + cheer only when a habit is marked done.
-      if (h && !h.doneToday) {
-        addXp(5)
-        celebrate()
+      if (!h) return
+      const today = todayKey()
+      if (!h.doneToday) {
+        // not-done → done: reward the first completion of the day.
+        if (h.rewardedDay !== today) {
+          addXp(5)
+          celebrate()
+          // Milestone: a habit just crossed 3/7/14 days.
+          checkStreakMilestones(h.streak + 1)
+          setHabits((prev) =>
+            prev.map((x) =>
+              x.id === id ? { ...x, doneToday: true, streak: x.streak + 1, rewardedDay: today } : x,
+            ),
+          )
+        } else {
+          // Safety net: day already paid (can't normally happen after an undo,
+          // which clears rewardedDay) — just re-tick without re-paying.
+          setHabits((prev) => prev.map((x) => (x.id === id ? { ...x, doneToday: true } : x)))
+        }
+      } else {
+        // done → not-done: full undo — revoke the XP granted today (if any) so
+        // a mistaken check doesn't leave a permanent +5. Unique ledger event;
+        // the display cache re-derives from the ledger so the balance drops.
+        if (h.rewardedDay === today) {
+          xpRef.current -= 5
+          const stamp = Date.now()
+          const rand = Math.random().toString(36).slice(2, 8)
+          setXpEvents((prev) => [...prev, { id: `revoke-${stamp}-${rand}`, amount: -5 }])
+          setXp(Math.max(0, xpRef.current))
+        }
+        setHabits((prev) =>
+          prev.map((x) =>
+            x.id === id
+              ? { ...x, doneToday: false, streak: Math.max(0, x.streak - 1), rewardedDay: "" }
+              : x,
+          ),
+        )
       }
-      setHabits((prev) =>
-        prev.map((x) =>
-          x.id === id
-            ? { ...x, doneToday: !x.doneToday, streak: x.doneToday ? Math.max(0, x.streak - 1) : x.streak + 1 }
-            : x,
-        ),
-      )
-      // Milestone: a habit just crossed 3/7/14 days.
-      if (h && !h.doneToday) checkStreakMilestones(h.streak + 1)
     },
-    [habits, addXp, checkStreakMilestones],
+    [habits, addXp, checkStreakMilestones, setXp, setXpEvents],
   )
 
   const addHabit = useCallback<Store["addHabit"]>((name, week) => {
     setHabits((prev) => [
-      { id: `h-${Date.now()}`, name, streak: 0, doneToday: false, week: week ?? [true, true, true, true, true, true, false] },
+      { id: `h-${Date.now()}`, name, streak: 0, doneToday: false, week: week ?? [true, true, true, true, true, true, false], shields: 0, rewardedDay: "" },
       ...prev,
     ])
   }, [])
 
-  const deleteHabit = useCallback((id: string) => {
-    setHabits((prev) => prev.filter((h) => h.id !== id))
-  }, [])
+  // Deleting a habit refunds the XP spent on its mini shields through the
+  // same xpEvents ledger (the authoritative source), instead of silently
+  // eating the spend. `miniShieldsRef` makes this race-safe: a double-tap on
+  // the delete button sees the count zeroed synchronously after the first
+  // refund, so the shields can't be cashed in twice.
+  const deleteHabit = useCallback(
+    (id: string) => {
+      const owned = miniShieldsRef.current[id] ?? 0
+      const refund = owned * HABIT_SHIELD_PRICE
+      if (refund > 0) {
+        miniShieldsRef.current = { ...miniShieldsRef.current, [id]: 0 }
+        xpRef.current += refund
+        const stamp = Date.now()
+        const rand = Math.random().toString(36).slice(2, 8)
+        setXpEvents((prev) => [...prev, { id: `refund-${stamp}-${rand}`, amount: refund }])
+        setXp(Math.max(0, xpRef.current))
+        const name = habits.find((x) => x.id === id)?.name
+        showNotification("ProFlow", `💸 ${refund} XP refunded for ${owned} mini shield${owned > 1 ? "s" : ""} on "${name ?? "habit"}"`)
+      }
+      setHabits((prev) => prev.filter((h) => h.id !== id))
+    },
+    [habits, setHabits, setXp, setXpEvents],
+  )
 
   const addGoal = useCallback<Store["addGoal"]>((name, progress) => {
     setGoals((prev) => [
@@ -1255,6 +1388,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       addXp,
       streakShields,
       buyShield,
+      buyHabitShield,
       achievements,
       bestStreak,
       totalTasksDone,
@@ -1279,7 +1413,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       theme, setTheme, prefs, togglePref, showTour, dismissTour, startTour, sessionCount, resetAllData,
       secondsLeft, totalSeconds, running, mode, pomodoro, sessionLabel,
       focusMinutes, breakMinutes, weeklyFocusGoal, setWeeklyFocusGoal, focusLog, recordFocusSession, xp, addXp,
-      streakShields, buyShield,
+      streakShields, buyShield, buyHabitShield,
       achievements, bestStreak, totalTasksDone, pendingBadges, dismissBadge,      setFocusMinutes,
       setBreakMinutes,
       startTimer, pauseTimer, toggleTimer, skipTimer, stopTimer, resetTimer,

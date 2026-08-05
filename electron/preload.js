@@ -16,4 +16,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("update:status", listener)
     return () => ipcRenderer.removeListener("update:status", listener)
   },
+
+  // Data backup export — native save dialog
+  saveBackup: (payload) => ipcRenderer.invoke("backup:save", payload),
 })

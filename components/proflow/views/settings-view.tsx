@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useUpdate } from "@/lib/use-update"
+import { isCapacitor } from "@/lib/lan-sync"
 import { Card, PageHeader } from "../ui"
 import { useStore, ACCENTS, ACHIEVEMENTS } from "../store"
 
@@ -89,7 +90,7 @@ export function SettingsView() {
   // XP, badges) lives in localStorage under "proflow-" keys. Export collects
   // every one of those keys into a single JSON file; import validates the file,
   // writes the keys back, and reloads so the store re-initializes from them.
-  const handleExport = () => {
+  const handleExport = async () => {
     try {
       const data: Record<string, string> = {}
       for (let i = 0; i < localStorage.length; i++) {
@@ -99,11 +100,39 @@ export function SettingsView() {
           if (raw !== null) data[k] = raw
         }
       }
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
+      const fileName = `proflow-backup-${new Date().toISOString().slice(0, 10)}.json`
+      const content = JSON.stringify(data, null, 2)
+
+      // Android APK: the WebView ignores browser-style anchor downloads, so the
+      // native Backup plugin writes the JSON straight to Downloads instead.
+      if (isCapacitor()) {
+        const backup = (window as any).Capacitor?.Plugins?.Backup
+        if (!backup?.saveBackup) throw new Error("Backup plugin not available — update the app")
+        await backup.saveBackup({ fileName, content })
+        setExported(true)
+        setTimeout(() => setExported(false), 2500)
+        setImportError(null)
+        return
+      }
+
+      // Desktop: native save dialog — the user picks where the file goes.
+      const api = (window as any).electronAPI
+      if (api?.saveBackup) {
+        const res = await api.saveBackup({ fileName, content })
+        if (res?.canceled) return // user closed the dialog — not an error
+        if (res?.error) throw new Error(res.error)
+        setExported(true)
+        setTimeout(() => setExported(false), 2500)
+        setImportError(null)
+        return
+      }
+
+      // Browser/dev fallback: classic anchor download.
+      const blob = new Blob([content], { type: "application/json" })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = `proflow-backup-${new Date().toISOString().slice(0, 10)}.json`
+      a.download = fileName
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -111,8 +140,11 @@ export function SettingsView() {
       setExported(true)
       setTimeout(() => setExported(false), 2500)
       setImportError(null)
-    } catch {
-      // storage unavailable — nothing to export
+    } catch (err) {
+      const msg = (err as any)?.message || ""
+      if (!/cancell?ed/i.test(msg)) {
+        setImportError(`Export failed: ${msg || "your data is safe, try again"}`)
+      }
     }
   }
 

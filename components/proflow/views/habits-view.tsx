@@ -1,9 +1,18 @@
 "use client"
 
 import { useState } from "react"
-import { Check, Flame, Plus, Shield, Target, Trash2 } from "lucide-react"
+import { Check, CheckCircle2, Flame, Plus, Shield, Target, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { FREE_SHIELD_EVERY_LEVELS, levelFor, MAX_SHIELDS, nextShieldMilestone, SHIELD_PRICE, useStore } from "../store"
+import {
+  FREE_SHIELD_EVERY_LEVELS,
+  HABIT_SHIELD_PRICE,
+  levelFor,
+  MAX_HABIT_SHIELDS,
+  MAX_SHIELDS,
+  nextShieldMilestone,
+  SHIELD_PRICE,
+  useStore,
+} from "../store"
 import { Card, CircularProgress, PageHeader, ProgressBar } from "../ui"
 import { Modal } from "../modal"
 import { Button } from "@/components/ui/button"
@@ -26,10 +35,19 @@ export function HabitsView() {
     xp,
     streakShields,
     buyShield,
+    buyHabitShield,
   } = useStore()
   const doneToday = habits.filter((h) => h.doneToday).length
   const [justBought, setJustBought] = useState(false)
   const [notEnough, setNotEnough] = useState(false)
+  const [miniBought, setMiniBought] = useState<string | null>(null)
+
+  const handleBuyMini = (id: string) => {
+    if (buyHabitShield(id)) {
+      setMiniBought(id)
+      setTimeout(() => setMiniBought(null), 2500)
+    }
+  }
 
   // Next free shield lands at the next multiple of FREE_SHIELD_EVERY_LEVELS.
   const nextFreeShieldLevel = nextShieldMilestone(levelFor(xp))
@@ -99,7 +117,9 @@ export function HabitsView() {
             <p className="text-sm font-semibold">Streak Shields</p>
             <p className="text-xs text-muted-foreground">
               Miss a scheduled day and a shield keeps your streak alive — automatically. You can hold up to{" "}
-              <span className="font-medium text-focus">{MAX_SHIELDS}</span> at once. Shields and XP stay in sync between your laptop and phone.
+              <span className="font-medium text-focus">{MAX_SHIELDS}</span> shared shields, or buy a{" "}
+              <span className="font-medium text-focus">mini shield for each habit</span> ({HABIT_SHIELD_PRICE} XP)
+              that protects only that habit&apos;s streak.
             </p>
             <p className="mt-1 text-[11px] font-medium text-focus/80">
               🎁 Free shield every {FREE_SHIELD_EVERY_LEVELS} levels — next at Level {nextFreeShieldLevel}
@@ -178,6 +198,31 @@ export function HabitsView() {
               </div>
               <button
                 type="button"
+                onClick={() => handleBuyMini(h.id)}
+                disabled={(h.shields ?? 0) >= MAX_HABIT_SHIELDS || xp < HABIT_SHIELD_PRICE}
+                title={
+                  (h.shields ?? 0) >= MAX_HABIT_SHIELDS
+                    ? "This habit has the max mini shields"
+                    : `Buy a mini shield for this habit (${HABIT_SHIELD_PRICE} XP) — protects only this habit's streak`
+                }
+                className={cn(
+                  "flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-colors",
+                  (h.shields ?? 0) > 0
+                    ? "bg-focus/10 text-focus hover:bg-focus/20"
+                    : "bg-muted/40 text-muted-foreground hover:bg-focus/15 hover:text-focus",
+                  ((h.shields ?? 0) >= MAX_HABIT_SHIELDS || xp < HABIT_SHIELD_PRICE) &&
+                    "cursor-not-allowed opacity-50",
+                )}
+              >
+                {miniBought === h.id ? (
+                  <CheckCircle2 className="size-3.5 text-success" />
+                ) : (
+                  <Shield className="size-3.5" />
+                )}
+                {(h.shields ?? 0)}/{MAX_HABIT_SHIELDS}
+              </button>
+              <button
+                type="button"
                 onClick={() => deleteHabit(h.id)}
                 aria-label={`Delete ${h.name}`}
                 className="flex size-8 items-center justify-center rounded-lg text-muted-foreground/60 transition-colors hover:bg-danger/10 hover:text-danger"
@@ -211,17 +256,7 @@ export function HabitsView() {
                 <span className="text-xs font-bold">{g.progress}%</span>
               </CircularProgress>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-sm font-semibold">{g.name}</p>
-                  <span
-                    className={cn(
-                      "shrink-0 rounded-md px-2 py-0.5 text-xs font-medium",
-                      g.status === "on-track" ? "bg-success/15 text-success" : "bg-danger/15 text-danger",
-                    )}
-                  >
-                    {g.status === "on-track" ? "On track" : "At risk"}
-                  </span>
-                </div>
+                <p className="truncate text-sm font-semibold">{g.name}</p>
                 <div className="mt-2 flex items-center gap-3">
                   <div className="flex-1">
                     <ProgressBar value={g.progress} tone={g.status === "on-track" ? "success" : "danger"} />

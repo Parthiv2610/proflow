@@ -132,8 +132,6 @@ export function Dashboard() {
     }
   })
   const weekMax = Math.max(100, ...weekMomentum.map((d) => d.score))
-  const onTrack = goals.filter((g) => g.status === "on-track").length
-  const atRisk = goals.filter((g) => g.status === "at-risk").length
 
   // Real deep-work hours: sum of completed focus sessions over the last 7 days
   // (including today). Starts at 0 on a fresh install.
@@ -393,9 +391,7 @@ export function Dashboard() {
                     <span className="mb-1.5 text-sm text-muted-foreground">%</span>
                   </div>
                   <p className="mt-2 text-sm text-muted-foreground">Avg across {goals.length} active goals</p>
-                  <p className="mt-2 flex items-center gap-1 text-sm font-medium text-success">
-                    <TrendingUp className="size-4" /> {onTrack} on track · {atRisk} at risk
-                  </p>
+
                 </div>
                 <div className="ml-auto">
                   <CircularProgress value={goalAvg} tone="var(--success)">
@@ -471,7 +467,17 @@ export function Dashboard() {
                     <Flame className={cn("size-4", h.doneToday ? "text-focus" : "text-muted-foreground")} />
                     {h.name}
                   </span>
-                  <span className="text-xs text-muted-foreground">{h.streak}d</span>
+                  <span className="flex items-center gap-2">
+                    {(h.shields ?? 0) > 0 && (
+                      <span
+                        title={`${h.shields} mini shield${(h.shields ?? 0) > 1 ? "s" : ""} on this habit — protects this streak if you miss a day`}
+                        className="flex size-5 items-center justify-center rounded-md bg-focus/10 text-focus"
+                      >
+                        <Shield className="size-3" />
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground">{h.streak}d</span>
+                  </span>
                 </button>
               ))}
             </div>
@@ -508,17 +514,7 @@ export function Dashboard() {
         <div className="grid gap-4 sm:grid-cols-2">
           {goals.map((g) => (
             <Card key={g.id}>
-              <div className="flex items-center justify-between">
-                <p className="font-semibold">{g.name}</p>
-                <span
-                  className={cn(
-                    "rounded-md px-2 py-0.5 text-xs font-medium",
-                    g.status === "on-track" ? "bg-success/15 text-success" : "bg-danger/15 text-danger",
-                  )}
-                >
-                  {g.status === "on-track" ? "On track" : "At risk"}
-                </span>
-              </div>
+              <p className="font-semibold">{g.name}</p>
               <div className="mt-4 flex items-center gap-4">
                 <CircularProgress
                   value={g.progress}

@@ -23,7 +23,7 @@ import { UpdateBanner } from "@/components/proflow/update-banner"
 import { MilestonePopup } from "@/components/proflow/milestone-popup"
 
 function Workspace() {
-  const { view, focusMode, toggleFocusMode, sidebarOpen, closeSidebar } = useStore()
+  const { view, focusMode, sidebarOpen, closeSidebar } = useStore()
   const [captureOpen, setCaptureOpen] = useState(false)
   const [captureProject, setCaptureProject] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)

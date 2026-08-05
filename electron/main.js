@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain } = require("electron")
+const { app, BrowserWindow, Menu, ipcMain, dialog } = require("electron")
 const path = require("path")
 const fs = require("fs")
 const { autoUpdater } = require("electron-updater")
@@ -198,6 +198,28 @@ ipcMain.handle("update:install", async () => {
   // Apply the downloaded update and restart into it.
   autoUpdater.quitAndInstall(false, true)
   return { status: "installing" }
+})
+
+// Data backup export — native save dialog so the user chooses where the JSON
+// lands (the renderer's browser-style anchor download can be unreliable).
+ipcMain.handle("backup:save", async (event, payload) => {
+  try {
+    const { fileName, content } = payload || {}
+    if (!fileName || typeof content !== "string") {
+      return { error: "fileName and content are required" }
+    }
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      title: "Export ProFlow backup",
+      defaultPath: path.join(app.getPath("downloads"), fileName),
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    })
+    if (canceled || !filePath) return { canceled: true }
+    fs.writeFileSync(filePath, content, "utf-8")
+    return { canceled: false, path: filePath }
+  } catch (err) {
+    return { error: String((err && err.message) || err) }
+  }
 })
 
 // ---------------------------------------------------------------------------

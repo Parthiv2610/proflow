@@ -1,8 +1,0 @@
-{
-  "latestVersion": "2.1.1",
-  "downloadUrl": "https://github.com/Parthiv2610/proflow/releases/latest/download/ProFlow-Setup.exe",
-  "apkDownloadUrl": "https://github.com/Parthiv2610/proflow/releases/latest/download/app-release.apk",
-  "releaseNotes": "✨ ProFlow — install once, update forever. Every push to GitHub auto-builds a new release; the app updates IN PLACE (no uninstall, data kept).",
-  "minimumVersion": "1.0.0",
-  "updateUrl": "https://api.github.com/repos/Parthiv2610/proflow/releases/latest"
-}

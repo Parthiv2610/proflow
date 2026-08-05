@@ -10,7 +10,6 @@ import {
 import {
   Calendar,
   FileText,
-  Flame,
   LayoutDashboard,
   ListTodo,
   Maximize2,
