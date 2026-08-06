@@ -13,7 +13,8 @@ import { useUpdate } from "@/lib/use-update"
  * data kept). Dismissible; reappears next launch until updated.
  */
 export function UpdateBanner() {
-  const { isElectron, isCap, status, info, progress, check, download, install } = useUpdate()
+  const { isElectron, isCap, status, info, progress, errorMsg, check, download, install } =
+    useUpdate()
   const [dismissed, setDismissed] = useState(false)
 
   // Desktop auto-checks in the main process at launch; the Android APK has no
@@ -27,7 +28,10 @@ export function UpdateBanner() {
   const show =
     !dismissed &&
     (isElectron || isCap) &&
-    (status === "available" || status === "downloading" || status === "downloaded")
+    (status === "available" ||
+      status === "downloading" ||
+      status === "downloaded" ||
+      status === "error")
 
   if (!show) return null
 
@@ -78,6 +82,13 @@ export function UpdateBanner() {
                 />
               </div>
             </>
+          ) : status === "error" ? (
+            <>
+              <p className="text-sm font-semibold text-foreground">Couldn&apos;t update</p>
+              <p className="text-xs text-muted-foreground">
+                {errorMsg || "Something went wrong — try again."}
+              </p>
+            </>
           ) : (
             <>
               <p className="text-sm font-semibold text-foreground">
@@ -101,6 +112,15 @@ export function UpdateBanner() {
               Restart &amp; Update
             </button>
           )
+        ) : status === "error" ? (
+          <button
+            type="button"
+            onClick={check}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <RefreshCw className="size-3.5" />
+            Try again
+          </button>
         ) : (
           <button
             type="button"

@@ -47,6 +47,7 @@ export type UpdateInfo = {
 }
 
 const GITHUB_LATEST = "https://api.github.com/repos/Parthiv2610/proflow/releases/latest"
+const GITHUB_RELEASES = "https://github.com/Parthiv2610/proflow/releases/latest"
 
 /**
  * Shared update state machine for desktop (electron-updater IPC) and the
@@ -168,15 +169,46 @@ export function useUpdate() {
   const download = useCallback(async () => {
     if (isCap) {
       if (!info?.downloadUrl) return
+      const updater = (window as any).Capacitor?.Plugins?.Updater
+
+      // Old builds never registered the native Updater plugin (fixed in
+      // v2.1.28), so calling installUpdate would silently do nothing. Don't
+      // fake success — say so plainly and hand the user the release page.
+      if (!updater?.installUpdate) {
+        setErrorMsg(
+          "This build's updater is outdated and can't install updates in place. " +
+            "Download app-release.apk from github.com/Parthiv2610/proflow/releases/latest and open it to update.",
+        )
+        setStatus("error")
+        try {
+          await updater?.openUrl?.({ url: GITHUB_RELEASES })
+        } catch {}
+        return
+      }
+
       setStatus("downloading")
       try {
-        await (window as any).Capacitor?.Plugins?.Updater?.installUpdate?.({
-          url: info.downloadUrl,
-        })
+        await updater.installUpdate({ url: info.downloadUrl })
         setStatus("downloaded")
-      } catch {
-        setErrorMsg("The update could not be installed. Try again.")
+      } catch (err) {
+        const msg = String((err as any)?.message || "")
+        // Match the plugin's exact rejection code only — a generic message
+        // containing "blocked" shouldn't trigger unknown-sources guidance.
+        const blocked = /unknown-sources/i.test(msg)
+        setErrorMsg(
+          blocked
+            ? "Installing apps from unknown sources is blocked for ProFlow. " +
+                "Allow it in Settings → Apps → ProFlow → Install unknown apps, then update again."
+            : msg || "The update could not be installed. Try again.",
+        )
         setStatus("error")
+        // Even when sideloading is blocked, the release page download is a
+        // workaround — the browser can save the APK, then open it to install.
+        if (blocked) {
+          try {
+            await updater.openUrl?.({ url: GITHUB_RELEASES })
+          } catch {}
+        }
       }
       return
     }

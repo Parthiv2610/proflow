@@ -53,10 +53,24 @@ public class UpdaterPlugin extends Plugin {
       call.reject("url is required");
       return;
     }
+    // Android 8+ gates sideloading behind the "Install unknown apps" switch for
+    // this app. Refuse early with a code the JS side can act on, instead of the
+    // system installer silently doing nothing.
+    if (android.os.Build.VERSION.SDK_INT >= 26
+        && !getContext().getPackageManager().canRequestPackageInstalls()) {
+      call.reject("install-unknown-sources-blocked");
+      return;
+    }
     call.setKeepAlive(true);
     new Thread(() -> {
       try {
         File apk = download(url);
+        // A real ProFlow APK is a few MB — refuse to hand a truncated/empty
+        // file to the installer (failed download, proxy error page, etc).
+        if (apk.length() < 500_000) {
+          call.reject("Downloaded update is invalid (file too small). Try again.");
+          return;
+        }
         Uri apkUri = FileProvider.getUriForFile(
             getContext(), getContext().getPackageName() + ".fileprovider", apk);
         Intent intent = new Intent(Intent.ACTION_VIEW);
@@ -70,6 +84,33 @@ public class UpdaterPlugin extends Plugin {
         call.reject("Download/install failed: " + e.getMessage(), e);
       }
     }).start();
+  }
+
+  /**
+   * Open any https URL in the default browser. Used as a fallback when in-app
+   * install is unavailable or blocked, so the user can still reach the GitHub
+   * release page and grab the APK manually.
+   */
+  @PluginMethod
+  public void openUrl(PluginCall call) {
+    String url = call.getString("url");
+    if (url == null || url.isEmpty()) {
+      call.reject("url is required");
+      return;
+    }
+    // Only allow web links — never file://, intent://, or other schemes.
+    if (!url.startsWith("https://") && !url.startsWith("http://")) {
+      call.reject("only http(s) URLs are allowed");
+      return;
+    }
+    try {
+      Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      getContext().startActivity(intent);
+      call.resolve();
+    } catch (Exception e) {
+      call.reject("No browser available to open " + url, e);
+    }
   }
 
   private File download(String urlStr) throws Exception {
