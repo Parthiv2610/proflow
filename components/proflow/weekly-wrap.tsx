@@ -26,22 +26,24 @@ function nudge(
   bestStreak: number,
 ): string {
   if (sessions >= 10) return `🔥 ${sessions} focus sessions — a genuinely focused week.`
-  if (tasksDone >= 15) return `🚀 ${tasksDone} tasks closed out. That's serious momentum.`
+  if (tasksDone >= 15) return `🚀 ${tasksDone} tasks closed out. That's serious progress.`
   if (tasksDone >= 8) return `✨ ${tasksDone} tasks done — steady and consistent.`
   if (bestStreak >= 5) return `🌱 ${bestStreak}-day habit streak — showing up every day counts.`
   if (focusHours >= 5) return `💪 ${focusHours} hrs of focus banked this week.`
   if (habitsDone > 0) return `🌤️ ${habitsDone} habit${habitsDone > 1 ? "s" : ""} kept up this week.`
-  return `🌤️ No pressure — next week is a fresh page, and even one small win counts.`
+  return `🌤️ No pressure — even one small win counts.`
 }
 
 export function WeeklyWrap() {
-  const { tasks, habits, focusLog, userName } = useStore()
+  const { tasks, habits, focusLog, recurringLog, userName } = useStore()
 
   const wrap = useMemo(() => {
     const keys = lastWeekKeys()
     const keySet = new Set(keys)
 
-    const tasksDone = tasks.filter((t) => t.completedAt && keySet.has(t.completedAt)).length
+    const tasksDone =
+      tasks.filter((t) => t.completedAt && keySet.has(t.completedAt)).length +
+      recurringLog.filter((d) => keySet.has(d)).length
     const habitsDone = habits.filter((h) => h.streak > 0 || h.doneToday).length
     const bestStreak = habits.length ? Math.max(...habits.map((h) => h.streak)) : 0
 
@@ -74,7 +76,7 @@ export function WeeklyWrap() {
     const firstName = userName?.trim() ? userName.trim().split(" ")[0] : ""
 
     return { tasksDone, habitsDone, focusHours, sessions, bestStreak, xp, headline, firstName }
-  }, [tasks, habits, focusLog, userName])
+  }, [tasks, habits, focusLog, recurringLog, userName])
 
   return (
     <Card className="relative overflow-hidden border-primary/25">
@@ -114,7 +116,7 @@ export function WeeklyWrap() {
         <Stat label="Focus sessions" value={String(wrap.sessions)} />
       </div>
       <p className="relative mt-3 text-xs text-muted-foreground">
-        {wrap.tasksDone} task{wrap.tasksDone === 1 ? "" : "s"} · {wrap.habitsDone} habit{wrap.habitsDone === 1 ? "" : "s"} · {wrap.focusHours} hrs of focus — logged from your real completions this week.
+        {wrap.tasksDone} task{wrap.tasksDone === 1 ? "" : "s"} · {wrap.habitsDone} habit{wrap.habitsDone === 1 ? "" : "s"} · {wrap.focusHours} hrs of focus.
       </p>
     </Card>
   )

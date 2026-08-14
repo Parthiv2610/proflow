@@ -10,10 +10,10 @@ import {
   LayoutDashboard,
   Shield,
   SquareCheckBig,
+  Sun,
   Target,
   TrendingUp,
   TriangleAlert,
-  Zap,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { DragSortContainer, DragSortItem } from "../drag-sort"
@@ -23,6 +23,9 @@ import { WeeklyWrap } from "../weekly-wrap"
 import { TaskRow } from "../task-row"
 import { useStore, MAX_SHIELDS, type EventItem, type View } from "../store"
 import { Card, CircularProgress, ProgressBar } from "../ui"
+
+// Monday-first day letters for the habit schedule strip (matches Habit.week[]).
+const WEEK_DAYS = ["M", "T", "W", "T", "F", "S", "S"]
 
 function greeting() {
   const h = new Date().getHours()
@@ -48,15 +51,6 @@ function formatTimeShort(h: number, m: number) {
   const ampm = h < 12 ? "AM" : "PM"
   const h12 = h % 12 || 12
   return `${h12}:${String(m).padStart(2, "0")} ${ampm}`
-}
-
-function momentumLabel(score: number) {
-  if (score >= 100) return "On fire! 🔥"
-  if (score >= 75) return "On a roll"
-  if (score >= 50) return "In the flow"
-  if (score >= 25) return "Getting going"
-  if (score > 0) return "Warming up"
-  return "Ready to start"
 }
 
 const tabs = [
@@ -85,7 +79,7 @@ export function Dashboard() {
       hour12: true,
     })
   }
-  const { tasks, habits, goals, events, notes, setView, cycleTaskStatus, deleteTask, reorderTasks, toggleHabit, userName, focusLog, streakShields } = useStore()
+  const { tasks, habits, goals, events, notes, setView, cycleTaskStatus, deleteTask, reorderTasks, toggleHabit, userName, focusLog, recurringLog, streakShields } = useStore()
 
   const done = tasks.filter((t) => t.status === "done").length
   const total = tasks.length
@@ -101,37 +95,25 @@ export function Dashboard() {
     [reorderTasks],
   )
   const habitsToday = habits.filter((h) => h.doneToday).length
+
+  // Today at a glance — simple counts of what's been done today. Tasks count
+  // date-stamped completions (including recurring rollovers); habits only
+  // store "done today", and focus comes from today's session log.
+  const today = todayStr()
+  const tasksToday =
+    tasks.filter((t) => t.status === "done" && t.completedAt === today).length +
+    recurringLog.filter((d) => d === today).length
+  const focusToday = focusLog.find((e) => e.date === today)
+  const focusSessionsToday = focusToday?.sessions ?? 0
+  const focusMinutesToday = focusToday?.minutes ?? 0
+
+  // The Habit Streak card leads with the strongest habit. Its week strip shows
+  // that habit's real weekly schedule (from its week[] array) — NOT a bar per
+  // streak day, which used to fake a Mon→Sun pattern regardless of the
+  // schedule or the actual days done.
+  const bestHabit = habits.length ? habits.reduce((a, b) => (b.streak > a.streak ? b : a)) : null
+  const bestStreak = bestHabit?.streak ?? 0
   const goalAvg = goals.length ? Math.round(goals.reduce((s, g) => s + g.progress, 0) / goals.length) : 0
-
-  // Momentum meter — today's completions as a 0-100 energy bar, weighted exactly
-  // like the XP economy (task +10, habit +5, focus session +25) so it doubles as
-  // "today's XP in percentage form". Computed inline (not memoized): the live
-  // clock below re-renders every second anyway, and that keeps it accurate the
-  // moment the day rolls over, even if the app has been open past midnight.
-  const tasksToday = tasks.filter((t) => t.status === "done" && t.completedAt === todayStr()).length
-  const focusToday = focusLog.find((e) => e.date === todayStr())?.sessions ?? 0
-  const momentumScore = Math.min(100, tasksToday * 10 + habitsToday * 5 + focusToday * 25)
-
-  // 7-day Momentum strip — per-day scores for the last week. Past days use the
-  // date-stamped sources (task completions + focus sessions); habit check-ins
-  // are only stored for today, so today's bar also includes them to match the
-  // meter above.
-  const weekMomentum = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() - (6 - i))
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-    const done = tasks.filter((t) => t.status === "done" && t.completedAt === key).length
-    const sess = focusLog.find((e) => e.date === key)?.sessions ?? 0
-    let score = done * 10 + sess * 25
-    if (i === 6) score += habitsToday * 5
-    return {
-      key,
-      score,
-      isToday: i === 6,
-      label: d.toLocaleDateString("en-US", { weekday: "narrow" }),
-    }
-  })
-  const weekMax = Math.max(100, ...weekMomentum.map((d) => d.score))
 
   // Real focus hours: sum of completed focus sessions over the last 7 days
   // (including today). Starts at 0 on a fresh install.
@@ -184,72 +166,35 @@ export function Dashboard() {
         <>
           <EncouragementCard />
 
-          {/* Momentum meter — a little energy bar that fills as you get things done today */}
+          {/* Today at a glance — a simple count of what's been done today */}
           <div className="animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-both" style={{ animationDelay: "50ms" }}>
-            <Card className="relative overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
-              <div className="flex flex-wrap items-center gap-4">
-                <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                  <Zap className="size-6" />
+            <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
+              <div className="flex items-start justify-between">
+                <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                  Today at a glance
+                </p>
+                <span className="flex size-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                  <Sun className="size-4.5" />
                 </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Momentum</p>
-                    <span className="text-sm font-bold text-primary">{momentumLabel(momentumScore)}</span>
-                  </div>
-                  <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{
-                        width: `${momentumScore}%`,
-                        background: "linear-gradient(90deg, var(--primary), var(--focus), var(--success))",
-                      }}
-                    />
-                  </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {tasksToday} task{tasksToday === 1 ? "" : "s"} · {habitsToday} habit{habitsToday === 1 ? "" : "s"} ·{" "}
-                    {focusToday} focus session{focusToday === 1 ? "" : "s"} today
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                <div>
+                  <p className="text-3xl font-bold tracking-tight tabular-nums">{tasksToday}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    task{tasksToday === 1 ? "" : "s"} done
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="text-3xl font-bold tracking-tight tabular-nums">{momentumScore}%</p>
-                  <p className="text-xs text-muted-foreground">of daily momentum</p>
+                <div>
+                  <p className="text-3xl font-bold tracking-tight tabular-nums">{habitsToday}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    habit{habitsToday === 1 ? "" : "s"} done
+                  </p>
                 </div>
-              </div>
-
-              {/* 7-day momentum strip — your energy trend week over week */}
-              <div className="mt-4 border-t border-border/50 pt-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">7-day trend</p>
-                  <p className="text-[10px] text-muted-foreground">tasks + focus · habits today only</p>
-                </div>
-                <div className="mt-2 flex items-end gap-1.5">
-                  {weekMomentum.map((d) => (
-                    <div key={d.key} className="flex flex-1 flex-col items-center gap-1">
-                      <div className="flex h-9 w-full items-end">
-                        <div
-                          title={`${d.key}: ${d.score}%`}
-                          className={cn(
-                            "w-full rounded-md transition-all duration-500",
-                            d.score > 0 ? "bg-focus/50" : "bg-muted/60",
-                          )}
-                          style={{
-                            height: `${Math.max(d.score > 0 ? 8 : 3, Math.round((d.score / weekMax) * 36))}px`,
-                            ...(d.isToday
-                              ? { background: "linear-gradient(to top, var(--primary), var(--focus))" }
-                              : {}),
-                          }}
-                        />
-                      </div>
-                      <span
-                        className={cn(
-                          "text-[10px]",
-                          d.isToday ? "font-semibold text-foreground" : "text-muted-foreground",
-                        )}
-                      >
-                        {d.label}
-                      </span>
-                    </div>
-                  ))}
+                <div>
+                  <p className="text-3xl font-bold tracking-tight tabular-nums">{focusMinutesToday}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    min focused{focusSessionsToday > 0 ? ` · ${focusSessionsToday} session${focusSessionsToday === 1 ? "" : "s"}` : ""}
+                  </p>
                 </div>
               </div>
             </Card>
@@ -296,12 +241,14 @@ export function Dashboard() {
                 </span>
               </div>
               <div className="mt-3 flex items-end gap-2">
-                <span className="text-5xl font-bold tracking-tight">{Math.max(...habits.map((h) => h.streak), 0)}</span>
+                <span className="text-5xl font-bold tracking-tight">{bestStreak}</span>
                 <span className="mb-1.5 text-sm text-muted-foreground">days</span>
               </div>
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm text-muted-foreground">
-                  Best: {Math.max(...habits.map((h) => h.streak), 0)} days · {habitsToday}/{habits.length} habits today
+                  {habits.length === 0
+                    ? "No habits yet — add one in Habits & Goals."
+                    : `Best: ${bestStreak} days · ${habitsToday}/${habits.length} habits today`}
                 </p>
                 <span
                   className="flex items-center gap-1.5 rounded-lg bg-focus/10 px-2 py-1 text-focus"
@@ -313,14 +260,32 @@ export function Dashboard() {
                   </span>
                 </span>
               </div>
-              <div className="mt-4 flex items-center justify-between gap-1">
-                {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
-                  <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
-                    <span className={cn("h-6 w-full rounded-md", i < Math.min(Math.max(...habits.map((h) => h.streak), 0), 7) ? "bg-focus" : "bg-muted")} />
-                    <span className="text-[10px] text-muted-foreground">{d}</span>
+              {bestHabit && (
+                <div className="mt-4">
+                  <div
+                    className="flex items-center justify-between gap-1"
+                    title={`${bestHabit.name} is scheduled on the highlighted days`}
+                  >
+                    {WEEK_DAYS.map((d, i) => (
+                      <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
+                        <span
+                          className={cn("h-6 w-full rounded-md", bestHabit.week[i] ? "bg-focus" : "bg-muted")}
+                          title={`${d} — ${bestHabit.week[i] ? "scheduled" : "rest day"}`}
+                        />
+                        <span
+                          className={cn(
+                            "text-[10px]",
+                            bestHabit.week[i] ? "font-medium text-foreground" : "text-muted-foreground",
+                          )}
+                        >
+                          {d}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                  <p className="mt-2 text-[11px] text-muted-foreground">{bestHabit.name}&apos;s weekly schedule</p>
+                </div>
+              )}
             </Card>
             </div>
 
@@ -337,7 +302,7 @@ export function Dashboard() {
                 <span className="text-5xl font-bold tracking-tight">{weekFocusHours}</span>
                 <span className="mb-1.5 text-sm text-muted-foreground">hrs</span>
               </div>
-              <p className="mt-2 text-sm text-muted-foreground">Last 7 days · logged from completed focus sessions</p>
+              <p className="mt-2 text-sm text-muted-foreground">Last 7 days</p>
               <p className="mt-4 text-xs text-muted-foreground">
                 {weekFocusHours > 0 ? `${weekFocusHours} hrs of focus this week` : "Complete a focus session to start tracking"}
               </p>
@@ -415,7 +380,7 @@ export function Dashboard() {
               <div>
                 <h2 className="text-lg font-semibold">Today&apos;s Tasks</h2>
                 <p className="text-sm text-muted-foreground">
-                  {tasks.filter((t) => t.status !== "done").length} active · delete or complete inline
+                  {tasks.filter((t) => t.status !== "done").length} active
                 </p>
               </div>
               <button
@@ -428,7 +393,7 @@ export function Dashboard() {
             </div>
             <div className="mt-4">
               {activeTasks.length === 0 ? (
-                <p className="py-4 text-center text-sm text-muted-foreground">No active tasks — you&apos;re all caught up!</p>
+                <p className="py-4 text-center text-sm text-muted-foreground">No active tasks — all caught up!</p>
               ) : (
                 <DragSortContainer ids={activeIds} onReorder={handleDashboardReorder} className="flex flex-col gap-2">
                   {activeTasks.map((t) => (
@@ -500,8 +465,8 @@ export function Dashboard() {
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
                 {weekFocusHours > 0
-                  ?                "Focus time logged automatically when you complete a session."
-                  : "No focus sessions yet — start the Focus Timer to build this week's total."}
+                  ? "Logged automatically when sessions complete."
+                  : "No focus sessions yet."}
               </p>
             </Card>
             <FocusChart />

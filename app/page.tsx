@@ -141,8 +141,11 @@ function Workspace() {
 
 /** Animated wrapper — fades in + slides up each time the view changes */
 function AnimatedView({ children }: { children: React.ReactNode }) {
+  // h-full: lets views like Notes fill the scroll area and manage their own
+  // internal scrolling (OneNote-style panels). Other views simply overflow as
+  // before — main is the scroller either way.
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="h-full animate-in fade-in slide-in-from-bottom-2 duration-300">
       {children}
     </div>
   )

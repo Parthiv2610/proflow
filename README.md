@@ -165,13 +165,6 @@ npx electron-packager . ProFlow --platform=win32 --arch=x64 --out=release --over
 ```bash
 # Using the convenience script (recommended)
 build.bat
-
-# Or manually step by step:
-pnpm build                                    # Build the Next.js static export
-# Then run makensis.exe (path varies by installation):
-"C:\Program Files (x86)\NSIS\makensis.exe" build\installer-manual.nsi
-# Or use the electron-builder path:
-"%LOCALAPPDATA%\electron-builder\Cache\nsis\nsis-3.0.4.1\makensis.exe" build\installer-manual.nsi
 ```
 
 ---
@@ -196,36 +189,12 @@ pro-flow/
 │   ├── use-local-storage.ts  # localStorage persistence hook
 │   └── use-update.ts         # Shared auto-update state machine (desktop + Android)
 ├── public/                   # Static assets
-├── build/                    # Build scripts & installer config
-│   ├── installer-manual.nsi  # NSIS installer script (manual route)
-│   ├── icon.ico              # Windows app icon
-│   ├── create-cert.ps1       # Self-signed cert generator
-│   ├── sign-installer.ps1    # Code signing script
-│   └── test-installer.bat    # Installer test suite
+├── build/                    # App icon (used by electron-builder + build.bat)
+│   └── icon.png
+├── build.bat                 # One-command desktop build (Next export + electron-builder)
+├── clean.bat                 # Removes build caches and release intermediates
 └── package.json
 ```
-
----
-
-## 🔐 Code Signing
-
-The installer can be signed with a self-signed certificate for development:
-
-```bash
-# Create a self-signed code signing certificate
-powershell -File build\create-cert.ps1
-
-# Sign the portable app binary
-powershell -File build\sign-portable.ps1
-
-# Rebuild the installer (which now includes the signed binary)
-build.bat
-
-# Sign the resulting Setup.exe
-powershell -File build\sign-installer.ps1
-```
-
-> **Note:** Self-signed certificates won't stop SmartScreen on other machines. For that, you need a CA-issued code signing certificate (DigiCert, Sectigo, etc.).
 
 ---
 

@@ -12,6 +12,8 @@ import {
   Download,
   Upload,
   FileJson,
+  Moon,
+  Sun,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useUpdate } from "@/lib/use-update"
@@ -50,6 +52,8 @@ export function SettingsView() {
     setAvatarUrl,
     theme,
     setTheme,
+    colorMode,
+    setColorMode,
     prefs,
     togglePref,
     startTour,
@@ -298,14 +302,14 @@ export function SettingsView() {
                 placeholder="Your name"
                 className="w-full rounded-lg border border-border bg-secondary/40 px-3 py-1.5 text-sm font-medium text-foreground outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
               />
-              <p className="mt-1 text-sm text-muted-foreground">Your name shows on the dashboard greeting.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Shown on the dashboard greeting.</p>
             </div>
           </div>
         </Card>
 
         <Card>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Accent color</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Changes the app theme instantly — buttons, sidebar and charts recolor live.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Colors the app theme live.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             {themes.map((t) => (
               <button
@@ -330,8 +334,36 @@ export function SettingsView() {
         </Card>
 
         <Card>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Appearance</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Dark or light — with your accent.</p>
+          <div className="mt-4 flex gap-2">
+            {(
+              [
+                { id: "dark" as const, label: "Dark", icon: Moon },
+                { id: "light" as const, label: "Light", icon: Sun },
+              ]
+            ).map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setColorMode(m.id)}
+                aria-pressed={colorMode === m.id}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                  colorMode === m.id
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+                }`}
+              >
+                <m.icon className="size-4" />
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </Card>
+
+        <Card>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Preferences</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Each setting here actually does something — notifications, sound and timer flow.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Notifications, sound and timer behavior.</p>
           <div className="mt-2 divide-y divide-border">
             {prefs.map((p) => (
               <div key={p.id} className="flex items-center justify-between gap-4 py-3.5">
@@ -350,9 +382,7 @@ export function SettingsView() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Badges</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Milestones you&apos;ve crossed — streaks and tasks. They never expire.
-              </p>
+              <p className="mt-1 text-sm text-muted-foreground">Streak and task milestones. They never expire.</p>
             </div>
             <span className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
               {Object.keys(achievements).length}/{ACHIEVEMENTS.length} earned
@@ -400,10 +430,7 @@ export function SettingsView() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Data backup
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Export all your tasks, habits, notes, focus history, badges and settings to a JSON file — or
-              restore them on this or another device.
-            </p>
+            <p className="mt-1 text-sm text-muted-foreground">Back up everything to a JSON file, or restore it on any device.</p>
           </div>
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-info/15 text-info">
             <FileJson className="size-4.5" />
@@ -460,10 +487,7 @@ export function SettingsView() {
             </div>
           </div>
         ) : (
-          <p className="mt-3 text-xs text-muted-foreground">
-            Export keeps a copy of everything on this device. Importing replaces your current data and restarts
-            the app — keep your backup file safe.
-          </p>
+          <p className="mt-3 text-xs text-muted-foreground">Importing replaces current data and restarts the app.</p>
         )}
 
         {importError && (
@@ -487,8 +511,7 @@ export function SettingsView() {
           <div className="space-y-1">
             <h3 className="font-semibold">Clear all data</h3>
             <p className="text-xs text-muted-foreground">
-              Deletes every task, habit, note, event, goal, and setting stored on this device and
-              starts fresh. This cannot be undone.
+              Wipes all data on this device. Cannot be undone.
             </p>
           </div>
           <Trash2 className="size-5 shrink-0 text-danger" />
@@ -598,9 +621,7 @@ function UpdateCard() {
               style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
             />
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Installs over the current version — your data stays. No reinstall needed.
-          </p>
+          <p className="mt-2 text-xs text-muted-foreground">Installs over the current version — your data stays.</p>
         </div>
       )}
 
@@ -616,9 +637,7 @@ function UpdateCard() {
                 <p className="mt-0.5 text-xs text-muted-foreground">{updateInfo.releaseNotes}</p>
               )}
               <p className="mt-1 text-xs text-muted-foreground">
-                {isCap
-                  ? "Updates in place with the same signature — tasks, habits and notes are kept."
-                  : "Installs over the current version — your data is kept."}
+                {isCap ? "Updates in place — your data stays." : "Installs over the current version — your data stays."}
               </p>
             </div>
             <button
@@ -641,9 +660,7 @@ function UpdateCard() {
               <p className="text-sm font-medium text-foreground">
                 Update v{updateInfo?.latestVersion || ""} ready
               </p>
-              <p className="text-xs text-muted-foreground">
-                Restart to finish installing — takes a few seconds.
-              </p>
+              <p className="text-xs text-muted-foreground">Restart to finish installing.</p>
             </div>
             <button
               type="button"
@@ -666,10 +683,7 @@ function UpdateCard() {
               <p className="text-sm font-medium text-foreground">
                 Update v{updateInfo?.latestVersion || ""} downloaded
               </p>
-              <p className="text-xs text-muted-foreground">
-                The system installer should now be open — tap Install (over the current version).
-                Your tasks, habits and notes are kept.
-              </p>
+              <p className="text-xs text-muted-foreground">The system installer is open — tap Install. Your data stays.</p>
             </div>
           </div>
         </div>

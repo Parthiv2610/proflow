@@ -38,7 +38,7 @@ import { Card, PageHeader, ProgressBar } from "../ui"
  * built from real focus sessions and task completions.
  */
 export function ProgressView() {
-  const { xp, achievements, bestStreak, totalTasksDone, focusLog, tasks, weeklyFocusGoal } = useStore()
+  const { xp, achievements, bestStreak, totalTasksDone, focusLog, tasks, recurringLog, habits, weeklyFocusGoal } = useStore()
 
   const level = levelFor(xp)
   const into = xpIntoLevel(xp)
@@ -59,10 +59,11 @@ export function ProgressView() {
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
     const mondayKey = key(monday)
 
-    // Tasks completed within this week ("YYYY-MM-DD" compares lexicographically).
-    const tasksDone = tasks.filter(
-      (t) => t.status === "done" && !!t.completedAt && t.completedAt >= mondayKey,
-    ).length
+    // Tasks completed within this week ("YYYY-MM-DD" compares lexicographically),
+    // including recurring-task occurrences from the completion log.
+    const tasksDone =
+      tasks.filter((t) => t.status === "done" && !!t.completedAt && t.completedAt >= mondayKey)
+        .length + recurringLog.filter((d) => d >= mondayKey).length
 
     // Focus sessions & minutes this week, plus distinct active days.
     let sessions = 0
@@ -78,6 +79,9 @@ export function ProgressView() {
     tasks.forEach((t) => {
       if (t.status === "done" && t.completedAt && t.completedAt >= mondayKey) activeDays.add(t.completedAt)
     })
+    recurringLog.forEach((d) => {
+      if (d >= mondayKey) activeDays.add(d)
+    })
 
     return {
       tasksDone,
@@ -86,7 +90,7 @@ export function ProgressView() {
       hours: Math.round((minutes / 60) * 10) / 10,
       activeDays: activeDays.size,
     }
-  }, [tasks, focusLog])
+  }, [tasks, focusLog, recurringLog])
 
   // ── Level curve: cumulative XP per level, with current marker ──
   const curve = useMemo(() => {
@@ -118,9 +122,16 @@ export function ProgressView() {
     tasks.forEach((t) => {
       if (t.status === "done" && t.completedAt) bump(t.completedAt, 1)
     })
+    recurringLog.forEach((d) => bump(d, 1))
 
     const today = new Date()
     const todayKeyStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
+    // Habit check-ins count once. Habits only store whether they were done
+    // TODAY (no per-day history yet), so past days can't light up — today's
+    // check-in does, which is why the calendar now responds to habits at all.
+    habits.forEach((h) => {
+      if (h.doneToday) bump(todayKeyStr, 1)
+    })
     // Anchor the grid to a Sunday: start on the Sunday of the current week, 15
     // weeks earlier. Rows then map directly to getDay() (0 = Sunday … 6 = Saturday)
     // and the final column is a real Sunday-aligned partial week ending today.
@@ -141,7 +152,7 @@ export function ProgressView() {
       weeks[col][row] = { date: key, count, isToday: key === todayKeyStr }
     }
     return { weeks, activeDays }
-  }, [focusLog, tasks])
+  }, [focusLog, tasks, recurringLog, habits])
 
   const heatColor = (count: number) => {
     if (count <= 0) return "bg-muted"
@@ -192,8 +203,7 @@ export function ProgressView() {
             </div>
           </div>
           <p className="mt-3 text-sm text-muted-foreground">
-            Total <span className="font-semibold text-foreground">{xp} XP</span> — tasks, habits and focus sessions
-            all count.
+            Total <span className="font-semibold text-foreground">{xp} XP</span> — tasks, habits and focus count.
           </p>
           <p className="mt-1 text-xs text-focus/80">
             🎁 Free shield every {FREE_SHIELD_EVERY_LEVELS} levels — next at Level {nextShieldMilestone(level)}
@@ -293,9 +303,7 @@ export function ProgressView() {
               />
             </div>
           )}
-          <p className="mt-4 text-xs text-muted-foreground">
-            Everything you've done this week (Monday–Sunday) — resets each Monday. Set your focus goal on the Focus Timer page.
-          </p>
+          <p className="mt-4 text-xs text-muted-foreground">This week (Mon–Sun) — resets each Monday.</p>
         </Card>
       </div>
 
@@ -304,7 +312,7 @@ export function ProgressView() {
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Badge Cabinet</p>
-            <p className="mt-1 text-sm text-muted-foreground">Earned badges stay forever. Locked ones show how close you are.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Earned badges last forever; locked ones show progress.</p>
           </div>
           <span className="flex size-9 items-center justify-center rounded-lg bg-success/15 text-success">
             <Trophy className="size-4.5" />
@@ -349,7 +357,7 @@ export function ProgressView() {
           <div>
             <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Streak Calendar</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Last 16 weeks of activity — focus sessions and completed tasks. {heat.activeDays} active days.
+              Last 16 weeks — focus, tasks and habit check-ins. {heat.activeDays} active days.
             </p>
           </div>
           <span className="flex size-9 items-center justify-center rounded-lg bg-info/15 text-info">
@@ -404,13 +412,13 @@ export function ProgressView() {
         </span>
         <div>
           <h2 className="text-lg font-semibold tracking-tight">Charts &amp; Trends</h2>
-          <p className="text-sm text-muted-foreground">How your effort stacks up over time.</p>
+          <p className="text-sm text-muted-foreground">Your effort over time.</p>
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="lg:col-span-2 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
-          <ActivityChart focusLog={focusLog} tasks={tasks} />
+          <ActivityChart focusLog={focusLog} tasks={tasks} recurringLog={recurringLog} />
         </Card>
         <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
           <WeeklyTrend focusLog={focusLog} weeklyFocusGoal={weeklyFocusGoal} />
@@ -419,7 +427,7 @@ export function ProgressView() {
           <TaskMixDonut tasks={tasks} />
         </Card>
         <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
-          <WeekdayChart focusLog={focusLog} tasks={tasks} />
+          <WeekdayChart focusLog={focusLog} tasks={tasks} recurringLog={recurringLog} />
         </Card>
         <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
           <ProjectBars tasks={tasks} />
@@ -443,7 +451,15 @@ function Legend({ color, label }: { color: string; label: string }) {
 }
 
 // ── Daily activity: focus minutes + tasks completed, per day ──────────
-function ActivityChart({ focusLog, tasks }: { focusLog: FocusLogEntry[]; tasks: Task[] }) {
+function ActivityChart({
+  focusLog,
+  tasks,
+  recurringLog,
+}: {
+  focusLog: FocusLogEntry[]
+  tasks: Task[]
+  recurringLog: string[]
+}) {
   const [range, setRange] = useState<7 | 14 | 30>(14)
   const [hover, setHover] = useState<number | null>(null)
 
@@ -457,12 +473,12 @@ function ActivityChart({ focusLog, tasks }: { focusLog: FocusLogEntry[]; tasks: 
       pts.push({
         label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         minutes: entry?.minutes ?? 0,
-        tasks: tasks.filter((t) => t.completedAt === k).length,
+        tasks: tasks.filter((t) => t.completedAt === k).length + recurringLog.filter((d) => d === k).length,
         isToday: i === 0,
       })
     }
     return pts
-  }, [focusLog, tasks, range])
+  }, [focusLog, tasks, recurringLog, range])
 
   const W = 720
   const H = 250
@@ -485,7 +501,7 @@ function ActivityChart({ focusLog, tasks }: { focusLog: FocusLogEntry[]; tasks: 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Daily Activity</p>
-          <p className="mt-1 text-sm text-muted-foreground">Focus time and tasks completed, day by day.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Focus time and tasks, per day.</p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
           <Legend color="var(--primary)" label="Focus hrs" />
@@ -511,9 +527,7 @@ function ActivityChart({ focusLog, tasks }: { focusLog: FocusLogEntry[]; tasks: 
         <div className="mt-4 flex h-52 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-center">
           <BarChart3 className="size-6 text-muted-foreground/60" />
           <p className="text-sm font-medium text-foreground">No activity yet</p>
-          <p className="max-w-sm text-sm text-muted-foreground">
-            Complete tasks or finish focus sessions and your daily rhythm will show up here.
-          </p>
+          <p className="max-w-sm text-sm text-muted-foreground">Complete tasks or focus sessions to see your rhythm.</p>
         </div>
       ) : (
         <svg
@@ -643,7 +657,7 @@ function WeeklyTrend({ focusLog, weeklyFocusGoal }: { focusLog: FocusLogEntry[];
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Focus Trend</p>
-          <p className="mt-1 text-sm text-muted-foreground">Focus hours per week vs your {goalHours}h goal.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Weekly focus vs your {goalHours}h goal.</p>
         </div>
         <span className="flex size-9 items-center justify-center rounded-lg bg-success/15 text-success">
           <Activity className="size-4.5" />
@@ -713,7 +727,7 @@ function TaskMixDonut({ tasks }: { tasks: Task[] }) {
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Task Mix</p>
-          <p className="mt-1 text-sm text-muted-foreground">Where every task stands right now.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Task status breakdown.</p>
         </div>
         <span className="flex size-9 items-center justify-center rounded-lg bg-info/15 text-info">
           <PieChart className="size-4.5" />
@@ -722,7 +736,7 @@ function TaskMixDonut({ tasks }: { tasks: Task[] }) {
       {total === 0 ? (
         <div className="mt-4 flex h-40 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-center">
           <p className="text-sm font-medium text-foreground">No tasks yet</p>
-          <p className="max-w-xs text-sm text-muted-foreground">Add a task and its status breakdown will appear here.</p>
+          <p className="max-w-xs text-sm text-muted-foreground">Add tasks to see the breakdown.</p>
         </div>
       ) : (
         <div className="mt-4 flex flex-wrap items-center justify-center gap-6">
@@ -769,7 +783,15 @@ function TaskMixDonut({ tasks }: { tasks: Task[] }) {
 }
 
 // ── Weekly rhythm: tasks + focus minutes by weekday (Mon-first) ────────
-function WeekdayChart({ focusLog, tasks }: { focusLog: FocusLogEntry[]; tasks: Task[] }) {
+function WeekdayChart({
+  focusLog,
+  tasks,
+  recurringLog,
+}: {
+  focusLog: FocusLogEntry[]
+  tasks: Task[]
+  recurringLog: string[]
+}) {
   const data = useMemo(() => {
     const names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     return names.map((label, i) => {
@@ -785,9 +807,13 @@ function WeekdayChart({ focusLog, tasks }: { focusLog: FocusLogEntry[]; tasks: T
           if (!Number.isNaN(d.getTime()) && (d.getDay() + 6) % 7 === i) count++
         }
       })
+      recurringLog.forEach((date) => {
+        const d = new Date(`${date}T00:00:00`)
+        if (!Number.isNaN(d.getTime()) && (d.getDay() + 6) % 7 === i) count++
+      })
       return { label, minutes, count }
     })
-  }, [focusLog, tasks])
+  }, [focusLog, tasks, recurringLog])
 
   const W = 640
   const H = 210
@@ -808,7 +834,7 @@ function WeekdayChart({ focusLog, tasks }: { focusLog: FocusLogEntry[]; tasks: T
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Weekly Rhythm</p>
-          <p className="mt-1 text-sm text-muted-foreground">Your busiest days, across all history.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Your busiest weekdays.</p>
         </div>
         <span className="flex size-9 items-center justify-center rounded-lg bg-focus/15 text-focus">
           <Repeat className="size-4.5" />
@@ -882,7 +908,7 @@ function ProjectBars({ tasks }: { tasks: Task[] }) {
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">By Project</p>
-          <p className="mt-1 text-sm text-muted-foreground">Task volume per project — completed vs open.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Task load per project.</p>
         </div>
         <span className="flex size-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
           <Layers className="size-4.5" />
@@ -891,7 +917,7 @@ function ProjectBars({ tasks }: { tasks: Task[] }) {
       {rows.length === 0 ? (
         <div className="mt-4 flex h-40 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-center">
           <p className="text-sm font-medium text-foreground">No projects yet</p>
-          <p className="max-w-xs text-sm text-muted-foreground">Assign tasks to projects and their load will appear here.</p>
+          <p className="max-w-xs text-sm text-muted-foreground">Assign tasks to projects to see load.</p>
         </div>
       ) : (
         <ul className="mt-4 flex flex-col gap-3">

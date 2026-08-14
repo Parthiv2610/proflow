@@ -29,49 +29,49 @@ const steps: Step[] = [
     icon: Sparkles,
     title: "Welcome to ProFlow",
     description:
-      "Your all-in-one productivity workspace. Manage tasks, track habits, focus with Pomodoro timers, and organise your calendar — all in one place.",
+      "Tasks, habits, focus timers and calendar — all in one place.",
   },
   {
     icon: LayoutDashboard,
     title: "Dashboard — Your Command Centre",
     description:
-      "See your daily progress at a glance: completion rate, habit streaks, focus hours, overdue tasks, goal progress, and upcoming events. The Focus Hours chart shows your last 7 days of focus.",
+      "Your daily progress at a glance — completion, streaks, focus and what's next.",
   },
   {
     icon: ListTodo,
     title: "Tasks & Projects",
     description:
-      "Add tasks with priorities, due dates, and categories. Toggle status between todo, in-progress, and done. Drag to reorder, or delete tasks you no longer need.",
+      "Prioritize, schedule, reorder and complete tasks.",
   },
   {
     icon: Plus,
     title: "Quick Capture",
     description:
-      "Hit the Capture button in the topbar to quickly add a task without leaving your current view. Set the title, project, category, priority, and due date in one go.",
+      "Add a task instantly from any view — title, project, priority and due date.",
   },
   {
     icon: Timer,
     title: "Focus Timer",
     description:
-      "Use the Pomodoro timer in the topbar for focus sessions. Start, pause, or skip between focus and break intervals. Track your total focus hours on the Dashboard.",
+      "Run focus sessions with the Pomodoro timer and track your hours.",
   },
   {
     icon: Command,
     title: "Command Palette",
     description:
-      "Press ⌘P (or Ctrl+P on Windows) to open the command palette. Search views, create tasks, or toggle focus mode — all from your keyboard.",
+      "Press ⌘P to search and act — all from your keyboard.",
   },
   {
     icon: Bell,
     title: "Stay Notified",
     description:
-      "The notification bell in the topbar keeps you updated on overdue tasks, upcoming events, and habit reminders. Mark individual notifications as read, or clear them all at once.",
+      "The bell keeps you updated on overdue tasks and events.",
   },
   {
     icon: Settings,
     title: "Personalise Everything",
     description:
-      "Visit Settings to change your name, upload a profile picture, pick an accent colour, and toggle preferences like desktop notifications, focus reminders, and more.",
+      "Change your name, avatar, accent color and preferences.",
   },
 ]
 

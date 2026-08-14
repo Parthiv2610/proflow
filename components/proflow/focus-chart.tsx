@@ -16,7 +16,7 @@ function dayKey(d: Date) {
 }
 
 export function FocusChart() {
-  const { focusLog, tasks } = useStore()
+  const { focusLog, tasks, recurringLog } = useStore()
   const [hover, setHover] = useState<number | null>(null)
 
   // Real data — the last 7 days ending today, built from recorded focus
@@ -31,11 +31,13 @@ export function FocusChart() {
       pts.push({
         day: d.toLocaleDateString("en-US", { weekday: "short" }),
         focus: entry ? Math.round((entry.minutes / 60) * 10) / 10 : 0,
-        tasks: tasks.filter((t) => t.completedAt === key).length,
+        tasks:
+          tasks.filter((t) => t.completedAt === key).length +
+          recurringLog.filter((d) => d === key).length,
       })
     }
     return pts
-  }, [focusLog, tasks])
+  }, [focusLog, tasks, recurringLog])
 
   const weekHours = data.reduce((s, d) => s + d.focus, 0)
   const allZero = data.every((d) => d.focus === 0 && d.tasks === 0)

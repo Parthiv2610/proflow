@@ -140,7 +140,7 @@ export function FocusView() {
               ))}
             </div>
             <p className="mt-4 text-sm text-muted-foreground">
-              {pomodoro - 1} of {totalPomodoros} pomodoros completed this session.
+              {pomodoro - 1} of {totalPomodoros} pomodoros done.
             </p>
           </Card>
 
@@ -162,9 +162,7 @@ export function FocusView() {
               step={1}
               onChange={setBreakMinutes}
             />
-            <p className="text-xs text-muted-foreground">
-              Saved automatically — changes apply whenever the timer is idle.
-            </p>
+            <p className="text-xs text-muted-foreground">Changes apply when the timer is idle.</p>
           </Card>
 
           <Card className="flex flex-col gap-3">
@@ -178,9 +176,7 @@ export function FocusView() {
               unit="hrs"
               onChange={(h) => setWeeklyFocusGoal(Math.max(0, Math.min(168, h)) * 60)}
             />
-            <p className="text-xs text-muted-foreground">
-              Your weekly focus target — the Progress page tracks it. Set to 0 to hide it there.
-            </p>
+            <p className="text-xs text-muted-foreground">Shown on Progress. Set to 0 to hide.</p>
           </Card>
 
           <Card className="flex flex-col gap-3">
@@ -199,7 +195,7 @@ export function FocusView() {
             <div className="rounded-xl bg-secondary/40 px-3 py-2.5">
               <ProgressBar value={levelPct} tone="primary" />
               <p className="mt-1.5 text-xs text-muted-foreground">
-                {xpForNextLevel(level) - xpIntoLevel(xp)} XP to Level {level + 1} · each completed session earns +25 XP
+                {xpForNextLevel(level) - xpIntoLevel(xp)} XP to Level {level + 1} · +25 XP per session
               </p>
             </div>
           </Card>

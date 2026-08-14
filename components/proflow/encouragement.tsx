@@ -35,7 +35,7 @@ function nudge(
     return `🎉 ${streak}-day focus streak — that's seriously consistent.`
   }
   if (doneTasks >= 5) return `🔥 ${doneTasks} tasks done today — you're on fire.`
-  if (doneTasks >= 3) return `✨ ${doneTasks} tasks knocked out. Nice momentum!`
+  if (doneTasks >= 3) return `✨ ${doneTasks} tasks knocked out. Keep the ball rolling!`
   if (weekHours >= 5) return `💪 ${weekHours} hrs of focus this week — impressive.`
   if (habitsTotal > 0 && habitsDone === habitsTotal) {
     return `✅ All ${habitsTotal} habit${habitsTotal > 1 ? "s" : ""} done today. Perfect attendance!`
@@ -44,7 +44,7 @@ function nudge(
   if (habitsTotal > 0 && habitsDone > 0) {
     return `🌱 ${habitsDone}/${habitsTotal} habits done. Keep the chain going.`
   }
-  if (doneTasks === 1) return `🌟 First task done. Momentum starts here.`
+  if (doneTasks === 1) return `🌟 First task done. You're moving!`
   return `🌤️ No pressure — even one small task is a win today.`
 }
 
@@ -120,7 +120,7 @@ export function EncouragementCard() {
           </div>
           <ProgressBar value={pct} tone="primary" className="mt-2" />
           <p className="mt-1.5 text-xs text-muted-foreground">
-            {need - into} XP to Level {level + 1} — tasks, habits and focus sessions all count.
+            {need - into} XP to Level {level + 1} — tasks, habits and focus count.
           </p>
         </div>
       </div>

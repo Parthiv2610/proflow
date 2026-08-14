@@ -149,7 +149,7 @@ export function CommandPalette({
         label: `Create task: "${query}"`,
         icon: Sparkles,
         onPick: () => {
-          addTask({ title: query, project: "Personal", category: "Admin", priority: "medium", due: "Today" })
+          addTask({ title: query, project: "Personal", priority: "medium", due: "" })
           onClose()
         },
       })

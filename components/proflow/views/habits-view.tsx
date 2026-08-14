@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Check, CheckCircle2, Flame, Plus, Shield, Target, Trash2 } from "lucide-react"
+import { Check, CheckCircle2, Flame, Pencil, Plus, Shield, Target, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   FREE_SHIELD_EVERY_LEVELS,
@@ -28,6 +28,7 @@ export function HabitsView() {
     goals,
     toggleHabit,
     addHabit,
+    updateHabit,
     deleteHabit,
     addGoal,
     updateGoal,
@@ -64,23 +65,46 @@ export function HabitsView() {
     }
   }
 
-  // add-habit modal state
+  // add/edit-habit modal state — `editingHabit` non-null means the modal edits
+  // an existing habit (same form, pre-filled) instead of creating one.
   const [habitOpen, setHabitOpen] = useState(false)
   const [habitName, setHabitName] = useState("")
   const [habitWeek, setHabitWeek] = useState<boolean[]>([true, true, true, true, true, true, false])
+  const [editingHabit, setEditingHabit] = useState<(typeof habits)[number] | null>(null)
 
   // add-goal modal state
   const [goalOpen, setGoalOpen] = useState(false)
   const [goalName, setGoalName] = useState("")
   const [goalProgress, setGoalProgress] = useState(0)
 
+  const DEFAULT_WEEK = [true, true, true, true, true, true, false]
+
+  const openAddHabit = () => {
+    setEditingHabit(null)
+    setHabitName("")
+    setHabitWeek(DEFAULT_WEEK)
+    setHabitOpen(true)
+  }
+
+  const openEditHabit = (h: (typeof habits)[number]) => {
+    setEditingHabit(h)
+    setHabitName(h.name)
+    setHabitWeek([...h.week])
+    setHabitOpen(true)
+  }
+
   const submitHabit = (e: React.FormEvent) => {
     e.preventDefault()
     const name = habitName.trim()
     if (!name) return
-    addHabit(name, habitWeek)
+    if (editingHabit) {
+      updateHabit(editingHabit.id, { name, week: habitWeek })
+    } else {
+      addHabit(name, habitWeek)
+    }
     setHabitName("")
-    setHabitWeek([true, true, true, true, true, true, false])
+    setHabitWeek(DEFAULT_WEEK)
+    setEditingHabit(null)
     setHabitOpen(false)
   }
 
@@ -98,7 +122,7 @@ export function HabitsView() {
     <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6">
       <PageHeader title="Habits & Goals" subtitle={`${doneToday}/${habits.length} habits done today · ${goals.length} active goals`}>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setHabitOpen(true)}>
+          <Button variant="secondary" onClick={openAddHabit}>
             <Plus className="size-4" /> Add habit
           </Button>
           <Button onClick={() => setGoalOpen(true)}>
@@ -116,10 +140,7 @@ export function HabitsView() {
           <div className="min-w-0">
             <p className="text-sm font-semibold">Streak Shields</p>
             <p className="text-xs text-muted-foreground">
-              Miss a scheduled day and a shield keeps your streak alive — automatically. You can hold up to{" "}
-              <span className="font-medium text-focus">{MAX_SHIELDS}</span> shared shields, or buy a{" "}
-              <span className="font-medium text-focus">mini shield for each habit</span> ({HABIT_SHIELD_PRICE} XP)
-              that protects only that habit&apos;s streak.
+              Miss a day and a shield keeps your streak alive — up to {MAX_SHIELDS} shared, or {HABIT_SHIELD_PRICE} XP per habit.
             </p>
             <p className="mt-1 text-[11px] font-medium text-focus/80">
               🎁 Free shield every {FREE_SHIELD_EVERY_LEVELS} levels — next at Level {nextFreeShieldLevel}
@@ -184,14 +205,22 @@ export function HabitsView() {
               >
                 <Check className="size-4.5" />
               </button>
-              <div className="min-w-0 flex-1">
-                <p className={cn("text-sm font-medium", h.doneToday && "text-foreground")}>{h.name}</p>
-                <div className="mt-1.5 flex items-center gap-1">
-                  {h.week.map((on, i) => (
-                    <span key={i} className={cn("size-2 rounded-full", on ? "bg-focus" : "bg-muted")} title={weekDays[i]} />
-                  ))}
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => openEditHabit(h)}
+                aria-label={`Edit ${h.name}`}
+                className="group/habit flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg text-left"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className={cn("block text-sm font-medium", h.doneToday && "text-foreground")}>{h.name}</span>
+                  <span className="mt-1.5 flex items-center gap-1">
+                    {h.week.map((on, i) => (
+                      <span key={i} className={cn("size-2 rounded-full", on ? "bg-focus" : "bg-muted")} title={weekDays[i]} />
+                    ))}
+                  </span>
+                </span>
+                <Pencil className="size-3.5 shrink-0 text-muted-foreground/60 opacity-0 transition-opacity group-hover/habit:opacity-100 group-focus-within:opacity-100" />
+              </button>
               <div className="flex items-center gap-1.5 rounded-lg bg-focus/10 px-2.5 py-1 text-focus">
                 <Flame className="size-3.5" />
                 <span className="text-sm font-semibold">{h.streak}</span>
@@ -202,8 +231,8 @@ export function HabitsView() {
                 disabled={(h.shields ?? 0) >= MAX_HABIT_SHIELDS || xp < HABIT_SHIELD_PRICE}
                 title={
                   (h.shields ?? 0) >= MAX_HABIT_SHIELDS
-                    ? "This habit has the max mini shields"
-                    : `Buy a mini shield for this habit (${HABIT_SHIELD_PRICE} XP) — protects only this habit's streak`
+                    ? "Max mini shields"
+                    : `Buy a mini shield for this habit (${HABIT_SHIELD_PRICE} XP)`
                 }
                 className={cn(
                   "flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-colors",
@@ -296,9 +325,12 @@ export function HabitsView() {
 
       <Modal
         open={habitOpen}
-        onClose={() => setHabitOpen(false)}
-        title="Add a habit"
-        description="Something you want to do regularly."
+        onClose={() => {
+          setHabitOpen(false)
+          setEditingHabit(null)
+        }}
+        title={editingHabit ? "Edit habit" : "Add a habit"}
+        description={editingHabit ? "Update the name and schedule." : "A habit you want to build."}
       >
         <form onSubmit={submitHabit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
@@ -336,17 +368,24 @@ export function HabitsView() {
             </div>
           </div>
           <div className="mt-1 flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => setHabitOpen(false)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setHabitOpen(false)
+                setEditingHabit(null)
+              }}
+            >
               Cancel
             </Button>
             <Button type="submit" size="lg">
-              Create habit
+              {editingHabit ? "Save changes" : "Create habit"}
             </Button>
           </div>
         </form>
       </Modal>
 
-      <Modal open={goalOpen} onClose={() => setGoalOpen(false)} title="Add a goal" description="Set a target you're working toward.">
+      <Modal open={goalOpen} onClose={() => setGoalOpen(false)} title="Add a goal" description="A goal you're working toward.">
         <form onSubmit={submitGoal} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="goal-name" className="text-sm font-medium text-foreground">

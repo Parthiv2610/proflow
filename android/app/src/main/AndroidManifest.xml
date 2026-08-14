@@ -10,13 +10,18 @@
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme">
 
+        <!-- adjustResize shrinks the WebView to the space above the on-screen
+             keyboard, so form fields (modals etc.) never stay hidden behind it.
+             This is the standard Capacitor setting; without it the keyboard
+             covers the bottom of the screen while typing. -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
-            android:exported="true">
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -34,6 +39,11 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Fires scheduled event reminders (AlarmManager) even when the app is closed -->
+        <receiver
+            android:name=".ReminderReceiver"
+            android:exported="false" />
     </application>
 
     <!-- Permissions -->
@@ -42,4 +52,12 @@
     <!-- Lets the app self-update: the system installer installs the downloaded
          APK over the current version, keeping all app data (same signature). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- OS notification reminders (Android 13+ runtime permission, requested
+         by the Reminders plugin). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Exact-alarm scheduling for precise reminder times (Android 12+). -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Voice note recording in Notes (runtime permission, requested by the
+         VoiceNotes plugin). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 </manifest>

@@ -13,6 +13,8 @@ public class MainActivity extends BridgeActivity {
     // the Backup plugin that the Settings export button calls). Register first.
     registerPlugin(UpdaterPlugin.class);
     registerPlugin(BackupPlugin.class);
+    registerPlugin(RemindersPlugin.class);
+    registerPlugin(VoiceNotesPlugin.class);
     super.onCreate(savedInstanceState);
   }
 }

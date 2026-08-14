@@ -13,6 +13,8 @@ import {
 import { useLocalStorage } from "@/lib/use-local-storage"
 import { showNotification } from "@/lib/notify"
 import { playChime } from "@/lib/sound"
+import { isCapacitor } from "@/lib/lan-sync"
+import { cancelAllReminders } from "@/lib/reminders"
 import { celebrate } from "./confetti"
 
 export type View =
@@ -33,12 +35,14 @@ export type Task = {
   id: string
   title: string
   project: string
-  category: string
   priority: Priority
   status: TaskStatus
   due: string
   overdue?: boolean
   completedAt?: string // "YYYY-MM-DD" when marked done — powers the 7-day chart
+  // Repeating task: when completed, the task rolls forward to its next
+  // occurrence instead of staying done (due advances by a week / a month).
+  recurring?: "weekly" | "monthly"
 }
 
 export type Habit = {
@@ -77,12 +81,39 @@ export type EventItem = {
   endMin: number // 0-55
 }
 
+export type NoteAttachment = {
+  id: string
+  name: string
+  kind: "image" | "file" | "voice"
+  mime: string
+  dataUrl: string // base64 — stored locally with the note
+  size: number // bytes
+  durationMs?: number // voice notes
+}
+
+// A saved snapshot of a note's text fields, kept per note so any past version
+// can be restored. Attachments are deliberately NOT versioned — they're base64
+// data URLs that would blow the localStorage quota if duplicated per save.
+export type NoteVersion = {
+  id: string
+  title: string
+  body: string
+  tag: string
+  at: number // epoch ms — when the snapshot was taken
+}
+
 export type Note = {
   id: string
   title: string
   body: string
   tag: string
   updated: string
+  pinned?: boolean
+  attachments?: NoteAttachment[]
+  // OneNote-style hierarchy: a note lives in a notebook → section. Optional for
+  // backward compatibility — views derive "Personal" / "General" defaults.
+  notebook?: string
+  section?: string
 }
 
 export type AppNotification = {
@@ -106,10 +137,11 @@ export type Pref = { id: string; label: string; desc: string; on: boolean }
 
 // Sensible, real preference defaults (each one is wired to actual behavior).
 export const defaultPrefs: Pref[] = [
-  { id: "desktopNotif", label: "Desktop notifications", desc: "Show an OS notification when tasks are overdue or you have events today.", on: true },
-  { id: "focusReminders", label: "Focus session reminders", desc: "Nudge me when a focus session ends.", on: true },
-  { id: "soundEnd", label: "Sound when timer ends", desc: "Play a chime when the timer finishes a session.", on: true },
-  { id: "autoBreaks", label: "Auto-start breaks", desc: "Begin the break timer automatically after focus.", on: false },
+  { id: "desktopNotif", label: "Desktop notifications", desc: "Notify about overdue tasks and today's events.", on: true },
+  { id: "focusReminders", label: "Focus session reminders", desc: "Nudge when a focus session ends.", on: true },
+  { id: "soundEnd", label: "Sound when timer ends", desc: "Chime when a session ends.", on: true },
+  { id: "autoBreaks", label: "Auto-start breaks", desc: "Start breaks automatically.", on: false },
+  { id: "androidReminders", label: "Android event reminders", desc: "Notify before today's events (Android).", on: true },
 ]
 
 // Accent themes — applied as CSS variables on <html> so every view re-colors live.
@@ -150,11 +182,16 @@ type Store = {
   reorderTasks: (ids: string[]) => void
   cycleTaskStatus: (id: string) => void
   setTaskStatus: (id: string, status: TaskStatus) => void
+  updateTask: (
+    id: string,
+    updates: Partial<Pick<Task, "title" | "project" | "priority" | "due" | "recurring">>,
+  ) => void
 
   habits: Habit[]
   addHabit: (name: string, week?: boolean[]) => void
   deleteHabit: (id: string) => void
   toggleHabit: (id: string) => void
+  updateHabit: (id: string, updates: Partial<Pick<Habit, "name" | "week">>) => void
 
   goals: Goal[]
   addGoal: (name: string, progress?: number) => void
@@ -165,8 +202,21 @@ type Store = {
   updateEvent: (id: string, updates: Partial<EventItem>) => void
   deleteEvent: (id: string) => void
   notes: Note[]
-  addNote: (n: Pick<Note, "title" | "body" | "tag">) => void
+  addNote: (
+    n: Pick<Note, "title" | "body" | "tag"> & {
+      pinned?: boolean
+      attachments?: NoteAttachment[]
+      notebook?: string
+      section?: string
+    },
+  ) => string // returns the new note's id (so the view can select it)
+  updateNote: (
+    id: string,
+    updates: Partial<Pick<Note, "title" | "body" | "tag" | "pinned" | "attachments" | "notebook" | "section">>,
+  ) => void
   deleteNote: (id: string) => void
+  noteHistory: Record<string, NoteVersion[]>
+  restoreNoteVersion: (id: string, v: NoteVersion) => void
 
   notifications: AppNotification[]
   markRead: (id: string) => void
@@ -181,6 +231,8 @@ type Store = {
 
   theme: string
   setTheme: (t: string) => void
+  colorMode: "dark" | "light"
+  setColorMode: (m: "dark" | "light") => void
   prefs: Pref[]
   togglePref: (id: string) => void
 
@@ -223,6 +275,7 @@ type Store = {
   achievements: Record<string, string>
   bestStreak: number
   totalTasksDone: number
+  recurringLog: string[] // completion dates of recurring-task occurrences
   pendingBadges: Achievement[]
   dismissBadge: () => void
   setFocusMinutes: (n: number) => void
@@ -247,6 +300,41 @@ export function todayKey() {
   return dateKey(new Date())
 }
 
+/** Best-effort parse of a task's `due` display string into a real date. */
+function parseDueDate(due: string): Date | null {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(due)) {
+    const d = new Date(`${due}T00:00:00`)
+    if (!Number.isNaN(d.getTime())) return d
+  }
+  const lower = due.toLowerCase()
+  if (lower === "today") return new Date()
+  if (lower === "tomorrow") {
+    const d = new Date()
+    d.setDate(d.getDate() + 1)
+    return d
+  }
+  return null
+}
+
+/**
+ * Advance a recurring task's due date to its next occurrence. Falls back to
+ * today when the label can't be parsed (e.g. custom text), so a repeating task
+ * always moves forward rather than getting stuck.
+ */
+export function advanceRecurringDue(task: Pick<Task, "due" | "recurring">): string {
+  const base = parseDueDate(task.due) ?? new Date()
+  if (task.recurring === "weekly") {
+    base.setDate(base.getDate() + 7)
+  } else if (task.recurring === "monthly") {
+    const targetMonth = base.getMonth() + 1
+    base.setMonth(targetMonth)
+    // JS rolls Jan 31 + 1 month over to Mar 3 — clamp to the last day of the
+    // target month instead so monthly repeats stay on the same day of month.
+    if (base.getMonth() !== targetMonth % 12) base.setDate(0)
+  }
+  return dateKey(base)
+}
+
 // ── XP & levels ────────────────────────────────────────────
 // Purely positive reinforcement: you earn XP by completing things, never lose
 // it, and level names are cheerful. Nothing here ever punishes a missed day.
@@ -256,7 +344,7 @@ const LEVEL_NAMES = [
   // 1–10 Beginning
   "Beginner", "Novice", "Rookie", "Starter", "Apprentice", "Explorer", "Learner", "Trainee", "Striver", "Go-Getter",
   // 11–20 Building
-  "Builder", "Maker", "Crafter", "Achiever", "Doer", "Climber", "Grinder", "Forger", "Driver", "Momentum",
+  "Builder", "Maker", "Crafter", "Achiever", "Doer", "Climber", "Grinder", "Forger", "Driver", "Velocity",
   // 21–30 Rising
   "Riser", "Soarer", "Ascender", "Rocket", "Comet", "Streak", "Surge", "Wave", "Blaze", "On Fire",
   // 31–40 Performing
@@ -399,6 +487,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [goals, setRawGoals] = useLocalStorage<Goal[]>("goals", initialGoals)
   const [events, setRawEvents] = useLocalStorage<EventItem[]>("events", initialEvents)
   const [notes, setRawNotes] = useLocalStorage<Note[]>("notes", initialNotes)
+  const [noteHistory, setRawNoteHistory] = useLocalStorage<Record<string, NoteVersion[]>>("noteHistory", {})
   const [notifications, setRawNotifications] = useLocalStorage<AppNotification[]>("notifications", initialNotifications)
 
   // Every OS toast (lib/notify showNotification) is ALSO recorded here as an
@@ -596,14 +685,27 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     totalTasksRef.current = totalTasksDone
   }, [totalTasksDone])
-  // Lifetime task-completions counter — reconciled from the tasks.
+  // Lifetime log of completed recurring-task occurrences (the completion date).
+  // Recurring tasks roll straight back to "todo" after a completion — they never
+  // sit in the "done" state the derived counter below reads — so every
+  // occurrence is recorded here with its date. It powers both the lifetime
+  // counter and the daily/weekly charts. Capped so the log can't grow forever
+  // (a weekly repeat is ~52 entries a year).
+  const [recurringLog, setRawRecurringLog] = useLocalStorage<string[]>("recurringLog", [])
+  // Lifetime task-completions counter — tasks currently marked done PLUS every
+  // completed recurring occurrence. Derived, so un-completing a task still
+  // decrements it, and checkTaskMilestones' +1 can never be rolled back by a
+  // later reconciliation (the two sides always agree). Note: completions made
+  // before this log existed are not back-filled — their badges were already
+  // granted at completion time, so nothing is lost.
   useEffect(() => {
     const done = tasks.filter((t) => t.status === "done" && t.completedAt).length
-    if (done !== totalTasksRef.current) {
-      totalTasksRef.current = done
-      setTotalTasksDone(done)
+    const total = done + recurringLog.length
+    if (total !== totalTasksRef.current) {
+      totalTasksRef.current = total
+      setTotalTasksDone(total)
     }
-  }, [tasks, setTotalTasksDone])
+  }, [tasks, recurringLog, setTotalTasksDone])
   // Lifetime focus-session counter — kept in sync with the focus log.
   const totalFocusRef = useRef(0)
   useEffect(() => {
@@ -665,7 +767,8 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     try {
       if (localStorage.getItem("proflow-achievements") !== null) return
       const maxStreak = habits.reduce((m, h) => Math.max(m, h.streak), 0)
-      const tasksDone = tasks.filter((t) => t.status === "done" && t.completedAt).length
+      const tasksDone =
+        tasks.filter((t) => t.status === "done" && t.completedAt).length + recurringLog.length
       const focusSessions = focusLog.reduce((s, e) => s + e.sessions, 0)
       if (maxStreak > 0) {
         bestStreakRef.current = maxStreak
@@ -685,7 +788,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // storage unavailable — nothing to seed
     }
-  }, [tasks, habits, focusLog, setBestStreak, setTotalTasksDone, setAchievements])
+  }, [tasks, habits, focusLog, recurringLog, setBestStreak, setTotalTasksDone, setAchievements])
 
   const buyShield = useCallback(() => {
     if (shieldsRef.current >= MAX_SHIELDS || xpRef.current < SHIELD_PRICE) return false
@@ -874,6 +977,18 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     root.style.setProperty("--sidebar-accent", a.accent)
   }, [theme])
 
+  // Light / dark appearance — toggles the `dark` class on <html> (globals.css
+  // ships light tokens on :root and dark tokens under .dark; adding the .light
+  // class also opts out of the OS-level prefers-color-scheme override).
+  const [colorMode, setRawColorMode] = useLocalStorage<"dark" | "light">("colorMode", "dark")
+  const setColorMode = setRawColorMode
+  useEffect(() => {
+    const root = document.documentElement
+    root.classList.toggle("dark", colorMode === "dark")
+    root.classList.toggle("light", colorMode === "light")
+    root.style.colorScheme = colorMode
+  }, [colorMode])
+
   // Desktop notifications — once per day, summarize overdue tasks + today's events.
   const notifiedDayRef = useRef("")
   useEffect(() => {
@@ -891,6 +1006,70 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     if (eventsToday > 0) bits.push(`${eventsToday} event${eventsToday > 1 ? "s" : ""} today`)
     showNotification("ProFlow", bits.join(" · "))
   }, [prefs, tasks, events])
+
+  // Android OS reminders — real notifications for today's time-blocked events.
+  // The WebView can't fire its own notifications, so the native Reminders
+  // plugin schedules AlarmManager alarms that post OS notifications even when
+  // ProFlow is closed. Reconciled whenever events/prefs change: cancel
+  // everything we own, then re-schedule the upcoming set (a handful of alarms,
+  // so this is cheap and always reflects the current calendar).
+  const remindersAskedRef = useRef(false)
+  useEffect(() => {
+    if (!isCapacitor()) return
+    const p = (window as any)?.Capacitor?.Plugins?.Reminders
+    if (!p) return
+    const enabled = prefs.some((x) => x.id === "androidReminders" && x.on)
+    ;(async () => {
+      // Toggled off (or never on): drop any alarms this plugin still holds so
+      // a disabled preference never fires stale notifications.
+      if (!enabled) {
+        try {
+          await p.cancelAll?.()
+        } catch {
+          // nothing to cancel
+        }
+        return
+      }
+      // Ask for notification permission once (Android 13+); if denied, skip
+      // quietly — the user can re-enable from system settings later.
+      if (!remindersAskedRef.current) {
+        remindersAskedRef.current = true
+        try {
+          const res = await p.requestPermission?.()
+          if (res && res.granted === false) return
+        } catch {
+          return
+        }
+      }
+      try {
+        await p.cancelAll?.()
+      } catch {
+        return
+      }
+      const today = todayKey()
+      const base = new Date()
+      const dayStart = new Date(base.getFullYear(), base.getMonth(), base.getDate())
+      for (const e of events) {
+        if (e.date !== today || !e.hasBlock) continue
+        const at = new Date(dayStart.getTime())
+        at.setHours(e.startHour, e.startMin, 0, 0)
+        // Nudge 5 minutes before the event so the user has time to wrap up.
+        const fireAt = at.getTime() - 5 * 60_000
+        if (fireAt <= Date.now() + 30_000) continue // already started / too soon
+        const t = e.time || `${e.startHour % 12 || 12}:${String(e.startMin).padStart(2, "0")}`
+        try {
+          await p.schedule?.({
+            id: `ev-${e.id}`,
+            title: `Event today: ${e.title}`,
+            body: `Starts at ${t}`,
+            at: fireAt,
+          })
+        } catch {
+          // permission denied or scheduling failure — skip this one
+        }
+      }
+    })()
+  }, [events, prefs])
 
   // welcome tour — defaults to OFF so the app never opens on a blocking overlay;
   // it's started manually from Settings → "Take the tour".
@@ -1068,6 +1247,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setRawGoals([])
     setRawEvents([])
     setRawNotes([])
+    setRawNoteHistory({})
     setRawNotifications([])
     setRawFocusLog([])
     // Gamification ledgers reset locally.
@@ -1087,11 +1267,13 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     bestStreakRef.current = 0
     setTotalTasksDone(0)
     totalTasksRef.current = 0
+    setRawRecurringLog([])
     totalFocusRef.current = 0
     setPendingBadges([])
     setRawUserName("You")
     setRawAvatarUrl("")
     setRawTheme("Purple")
+    setRawColorMode("dark")
     setRawPrefs(defaultPrefs)
     setShowTour(false)
     setSessionCount(0)
@@ -1103,6 +1285,8 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setMode("focus")
     setPomodoro(1)
     setRunning(false)
+    // Drop any OS reminders the Android plugin scheduled for old events.
+    cancelAllReminders()
   }, [
     setRawTasks,
     setRawHabits,
@@ -1120,10 +1304,12 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setRawAchievements,
     setRawBestStreak,
     setTotalTasksDone,
+    setRawRecurringLog,
     setPendingBadges,
     setRawUserName,
     setRawAvatarUrl,
     setRawTheme,
+    setRawColorMode,
     setRawPrefs,
     setShowTour,
     setSessionCount,
@@ -1152,6 +1338,12 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setTasks((prev) => prev.filter((t) => t.id !== id))
   }, [])
 
+  // Edit a task's details in place — status/completedAt are deliberately not
+  // editable here (the checkbox owns status transitions and their rewards).
+  const updateTask = useCallback<Store["updateTask"]>((id, updates) => {
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)))
+  }, [])
+
   const reorderTasks = useCallback((ids: string[]) => {
     setTasks((prev) => {
       const map = new Map(prev.map((t) => [t.id, t]))
@@ -1176,7 +1368,28 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       if (t && t.status !== "done" && next === "done" && t.completedAt !== todayKey()) {
         addXp(10)
         celebrate()
-        if (!t.completedAt) checkTaskMilestones() // first-time completion counts toward 10/50/100
+        // Every occurrence of a repeating task counts toward 10/50/100 tasks.
+        if (!t.completedAt || t.recurring) checkTaskMilestones()
+      }
+      // A completed repeating task rolls forward to its next occurrence instead
+      // of staying "done": same title/project/priority, due advanced a week or
+      // a month. The XP reward above already fired for this occurrence, and the
+      // completion is logged so it counts toward the lifetime counter + charts.
+      if (t?.recurring && next === "done") {
+        const nextDue = advanceRecurringDue(t)
+        setRawRecurringLog((prev) => [...prev.slice(-999), todayKey()])
+        setTasks((prev) =>
+          prev.map((x) =>
+            x.id === id
+              ? { ...x, status: "todo", due: nextDue, overdue: false, completedAt: "" }
+              : x,
+          ),
+        )
+        showNotification(
+          "ProFlow",
+          `🔁 Completed — next occurrence ${nextDue} (${t.recurring === "weekly" ? "weekly" : "monthly"})`,
+        )
+        return
       }
       setTasks((prev) =>
         prev.map((x) =>
@@ -1200,7 +1413,24 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       if (t && t.status !== "done" && status === "done" && t.completedAt !== todayKey()) {
         addXp(10)
         celebrate()
-        if (!t.completedAt) checkTaskMilestones()
+        if (!t.completedAt || t.recurring) checkTaskMilestones()
+      }
+      // Repeating task: completing rolls it forward instead of leaving it done.
+      if (t?.recurring && status === "done") {
+        const nextDue = advanceRecurringDue(t)
+        setRawRecurringLog((prev) => [...prev.slice(-999), todayKey()])
+        setTasks((prev) =>
+          prev.map((x) =>
+            x.id === id
+              ? { ...x, status: "todo", due: nextDue, overdue: false, completedAt: "" }
+              : x,
+          ),
+        )
+        showNotification(
+          "ProFlow",
+          `🔁 Completed — next occurrence ${nextDue} (${t.recurring === "weekly" ? "weekly" : "monthly"})`,
+        )
+        return
       }
       setTasks((prev) =>
         prev.map((x) =>
@@ -1274,6 +1504,12 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     ])
   }, [])
 
+  // Edit a habit's name / weekly schedule. Streak & doneToday are preserved —
+  // only the schedule and label change, so a rename never costs progress.
+  const updateHabit = useCallback<Store["updateHabit"]>((id, updates) => {
+    setHabits((prev) => prev.map((h) => (h.id === id ? { ...h, ...updates } : h)))
+  }, [])
+
   // Deleting a habit refunds the XP spent on its mini shields through the
   // same xpEvents ledger (the authoritative source), instead of silently
   // eating the spend. `miniShieldsRef` makes this race-safe: a double-tap on
@@ -1325,14 +1561,75 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const addNote = useCallback<Store["addNote"]>((n) => {
-    setNotes((prev) => [
-      { id: `n-${Date.now()}`, updated: "just now", ...n },
-      ...prev,
-    ])
+    const id = `n-${Date.now()}`
+    setNotes((prev) => [{ id, updated: "just now", pinned: false, attachments: [], ...n }, ...prev])
+    return id
   }, [])
+
+  // Snapshot the note's current text fields BEFORE an update overwrites them,
+  // so every save is recoverable. Deduplicates consecutive identical saves and
+  // caps storage: 15 versions per note, 300 snapshots total across all notes.
+  const snapshotNote = useCallback((cur: Note) => {
+    setRawNoteHistory((prev) => {
+      const prevList = prev[cur.id] ?? []
+      const last = prevList[prevList.length - 1]
+      if (last && last.title === cur.title && last.body === cur.body && last.tag === cur.tag) return prev
+      const fresh: NoteVersion = {
+        id: `v-${Date.now()}`,
+        title: cur.title,
+        body: cur.body,
+        tag: cur.tag,
+        at: Date.now(),
+      }
+      // next's first prevList.length entries mirror prev[cur.id] — keep that
+      // mapping so the global trim below can filter it without resurrecting
+      // entries it just dropped for the note being saved.
+      const next = [...prevList, fresh].slice(-15)
+      const total = Object.values(prev).reduce((acc, l) => acc + l.length, 0)
+      if (total > 300) {
+        // Drop the oldest snapshots across all notes until under the cap.
+        const all: { noteId: string; idx: number; at: number }[] = []
+        for (const [noteId, l] of Object.entries(prev)) l.forEach((v, idx) => all.push({ noteId, idx, at: v.at }))
+        all.sort((a, b) => a.at - b.at)
+        const drop = new Set<string>()
+        for (let over = total - 300, i = 0; over > 0 && i < all.length; i++, over--) drop.add(`${all[i].noteId}:${all[i].idx}`)
+        const trimmed: Record<string, NoteVersion[]> = {}
+        for (const [noteId, l] of Object.entries(prev)) {
+          const kept = l.filter((_v, idx) => !drop.has(`${noteId}:${idx}`))
+          if (kept.length) trimmed[noteId] = kept
+        }
+        const keptNext = next.filter((_v, idx) => idx >= prevList.length || !drop.has(`${cur.id}:${idx}`))
+        return { ...trimmed, [cur.id]: keptNext }
+      }
+      return { ...prev, [cur.id]: next }
+    })
+  }, [])
+
+  // Edit an existing note — snapshot the current version, then apply the
+  // editable fields and mark it fresh.
+  const updateNote = useCallback<Store["updateNote"]>((id, updates) => {
+    const cur = notes.find((n) => n.id === id)
+    if (cur) snapshotNote(cur)
+    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, ...updates, updated: "just now" } : n)))
+  }, [notes, snapshotNote])
+
+  // Restore a past version. The CURRENT version is snapshotted first, so a
+  // restore is itself reversible from the history list.
+  const restoreNoteVersion = useCallback((id: string, v: NoteVersion) => {
+    const cur = notes.find((n) => n.id === id)
+    if (cur) snapshotNote(cur)
+    setNotes((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, title: v.title, body: v.body, tag: v.tag, updated: "just now" } : n)),
+    )
+  }, [notes, snapshotNote])
 
   const deleteNote = useCallback((id: string) => {
     setNotes((prev) => prev.filter((n) => n.id !== id))
+    // A deleted note's history is orphaned — drop it to avoid a leak.
+    setRawNoteHistory((prev) => {
+      const { [id]: _removed, ...rest } = prev
+      return rest
+    })
   }, [])
 
   const addEvent = useCallback((e: Omit<EventItem, "id">) => {
@@ -1376,10 +1673,12 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       reorderTasks,
       cycleTaskStatus,
       setTaskStatus,
+      updateTask,
       habits,
       addHabit,
       deleteHabit,
       toggleHabit,
+      updateHabit,
       goals,
       addGoal,
       updateGoal,
@@ -1390,7 +1689,10 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       deleteEvent,
       notes,
       addNote,
+      updateNote,
       deleteNote,
+      noteHistory,
+      restoreNoteVersion,
       notifications,
       markRead,
       markAllRead,
@@ -1402,6 +1704,8 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       setAvatarUrl,
       theme,
       setTheme,
+      colorMode,
+      setColorMode,
       prefs,
       togglePref,
       showTour,
@@ -1433,6 +1737,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       achievements,
       bestStreak,
       totalTasksDone,
+      recurringLog,
       pendingBadges,
       dismissBadge,
     setFocusMinutes,
@@ -1447,15 +1752,15 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     resetTimer,
   }),
     [
-      view, search, tasks, projects, addTask, deleteTask, reorderTasks, cycleTaskStatus, setTaskStatus, habits, addHabit,
-      deleteHabit, toggleHabit, goals, addGoal, updateGoal, deleteGoal, events, addEvent, updateEvent, deleteEvent,
-      notes, addNote, deleteNote, notifications, markRead, markAllRead, deleteNotification, clearNotifications,
+      view, search, tasks, projects, addTask, deleteTask, reorderTasks, cycleTaskStatus, setTaskStatus, updateTask, habits,
+      addHabit, deleteHabit, toggleHabit, updateHabit, goals, addGoal, updateGoal, deleteGoal, events, addEvent, updateEvent, deleteEvent,
+      notes, addNote, updateNote, deleteNote, notifications, markRead, markAllRead, deleteNotification, clearNotifications,
       focusMode, toggleFocusMode, sidebarOpen, toggleSidebar, closeSidebar, userName, setUserName, avatarUrl, setAvatarUrl,
-      theme, setTheme, prefs, togglePref, showTour, dismissTour, startTour, sessionCount, resetAllData,
+      theme, setTheme, colorMode, setColorMode, prefs, togglePref, showTour, dismissTour, startTour, sessionCount, resetAllData,
       secondsLeft, totalSeconds, running, mode, pomodoro, sessionLabel,
       focusMinutes, breakMinutes, weeklyFocusGoal, setWeeklyFocusGoal, focusLog, recordFocusSession, xp, addXp,
       streakShields, buyShield, buyHabitShield,
-      achievements, bestStreak, totalTasksDone, pendingBadges, dismissBadge,      setFocusMinutes,
+      achievements, bestStreak, totalTasksDone, recurringLog, pendingBadges, dismissBadge,      setFocusMinutes,
       setBreakMinutes,
       startTimer, pauseTimer, toggleTimer, skipTimer, stopTimer, resetTimer,
       weeklyFocusGoal, setWeeklyFocusGoal,

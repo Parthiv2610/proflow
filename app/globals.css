@@ -187,3 +187,144 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ── Rendered note content (lib/markdown) ─────────────────────────── */
+.pf-prose {
+  line-height: 1.55;
+}
+.pf-prose h1 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0.5rem 0 0.25rem;
+  color: var(--foreground);
+}
+.pf-prose h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0.5rem 0 0.25rem;
+  color: var(--foreground);
+}
+.pf-prose h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0.4rem 0 0.2rem;
+  color: var(--foreground);
+}
+.pf-prose p {
+  margin: 0.3rem 0;
+}
+.pf-prose ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin: 0.3rem 0;
+}
+.pf-prose code {
+  background: var(--muted);
+  border-radius: 0.3rem;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.85em;
+  font-family: var(--font-mono);
+}
+.pf-prose hr {
+  margin: 0.6rem 0;
+  border-color: var(--border);
+}
+/* Task checklists inside notes */
+.pf-task-list {
+  list-style: none;
+  padding-left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0.3rem 0;
+}
+.pf-task-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--border);
+  font-size: 0.65rem;
+  margin-right: 0.45rem;
+  vertical-align: middle;
+  color: transparent;
+}
+.pf-task-box.checked {
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--success-foreground);
+}
+
+/* [[Wiki links]] rendered inside note bodies — clickable, accent-colored.
+   The reader intercepts clicks and navigates to the linked note. */
+.pf-wiki {
+  color: var(--primary);
+  cursor: pointer;
+  border-radius: 0.2rem;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  text-underline-offset: 2px;
+  padding: 0 0.05rem;
+  transition: background 0.15s;
+}
+.pf-wiki:hover {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.pf-wiki:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Print / Save-as-PDF: only the note body is printed, cleanly. Everything
+   else (sidebar, tabs, reader chrome) is hidden via the visibility trick. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .pf-print-area,
+  .pf-print-area * {
+    visibility: visible;
+  }
+  .pf-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow: visible;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .pf-print-area,
+  .pf-print-area .pf-prose,
+  .pf-print-area h1,
+  .pf-print-area h2,
+  .pf-print-area h3,
+  .pf-print-area p,
+  .pf-print-area li {
+    color: #000 !important;
+    background: #fff !important;
+  }
+  .pf-print-area a {
+    color: #000 !important;
+  }
+  .pf-print-area img {
+    max-height: 5in;
+    width: auto;
+  }
+  .pf-print-area audio,
+  .pf-print-area video {
+    display: none;
+  }
+  .pf-print-area figure,
+  .pf-print-area section {
+    break-inside: avoid;
+  }
+  /* Print the target of [[wiki links]] next to the link. */
+  .pf-print-area .pf-wiki::after {
+    content: " (" attr(data-note-title) ")";
+    font-style: italic;
+  }
+}

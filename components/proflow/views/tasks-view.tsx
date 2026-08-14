@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { DragSortContainer, DragSortItem } from "../drag-sort"
 import { TaskRow } from "../task-row"
+import { CaptureDialog } from "../capture-dialog"
 import { useStore, type Task, type TaskStatus } from "../store"
 import { PageHeader } from "../ui"
 
@@ -35,6 +36,8 @@ export function TasksView({
 }) {
   const { tasks, projects, search, setSearch, cycleTaskStatus, deleteTask, reorderTasks } = useStore()
   const [status, setStatus] = useState<TaskStatus | "all">("all")
+  // The task currently being edited — opens the capture dialog in edit mode.
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
   // "all" shows every task; "" is the Inbox (tasks without a project); any other
   // value is a specific project tab. Tasks are never mixed across tabs.
   const [projectTab, setProjectTab] = useState<string>("all")
@@ -80,7 +83,7 @@ export function TasksView({
       } else if (t.project !== projectTab) {
         return false // specific project tab
       }
-      if (q && !`${t.title} ${t.project} ${t.category}`.toLowerCase().includes(q)) return false
+      if (q && !`${t.title} ${t.project}`.toLowerCase().includes(q)) return false
       return true
     })
   }, [tasks, status, projectTab, search])
@@ -206,6 +209,7 @@ export function TasksView({
             tasks={filtered}
             onToggle={(id) => cycleTaskStatus(id)}
             onDelete={(id) => deleteTask(id)}
+            onEdit={(t) => setEditingTask(t)}
             onReorder={(ids) => reorderTasks(ids)}
           />
         )
@@ -221,11 +225,18 @@ export function TasksView({
               tasks={g.tasks}
               onToggle={(id) => cycleTaskStatus(id)}
               onDelete={(id) => deleteTask(id)}
+              onEdit={(t) => setEditingTask(t)}
               onReorder={(ids) => reorderTasks(ids)}
             />
           ))}
         </div>
       )}
+
+      <CaptureDialog
+        open={!!editingTask}
+        editing={editingTask}
+        onClose={() => setEditingTask(null)}
+      />
     </div>
   )
 }
@@ -236,6 +247,7 @@ function TaskGroup({
   tasks,
   onToggle,
   onDelete,
+  onEdit,
   onReorder,
 }: {
   project: string
@@ -243,6 +255,7 @@ function TaskGroup({
   tasks: Task[]
   onToggle: (id: string) => void
   onDelete: (id: string) => void
+  onEdit: (t: Task) => void
   onReorder: (ids: string[]) => void
 }) {
   const taskIds = tasks.map((t) => t.id)
@@ -269,6 +282,7 @@ function TaskGroup({
               dragHandle
               onToggle={() => onToggle(t.id)}
               onDelete={() => onDelete(t.id)}
+              onEdit={() => onEdit(t)}
             />
           </DragSortItem>
         ))}

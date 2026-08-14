@@ -63,7 +63,7 @@ export function UpdateBanner() {
               </p>
               <p className="text-xs text-muted-foreground">
                 {isCap
-                  ? "The system installer is open — tap Install to finish."
+                  ? "Tap Install in the system installer."
                   : "Restart to finish installing. Your data stays."}
               </p>
             </>
@@ -94,9 +94,7 @@ export function UpdateBanner() {
               <p className="text-sm font-semibold text-foreground">
                 ProFlow v{info?.latestVersion} is available
               </p>
-              <p className="text-xs text-muted-foreground">
-                Installs over the current version — no reinstall, data kept.
-              </p>
+              <p className="text-xs text-muted-foreground">Installs over the current version — data kept.</p>
             </>
           )}
         </div>

@@ -1,6 +1,57 @@
 # 🚀 ProFlow — Release Notes
 
-> ℹ️ **Latest update:** LAN sync was **removed** — the app is fully local on each device (desktop and Android APK each keep their own data). Updates still install in place with no data loss.
+> ℹ️ **Latest update (v3.0.0):** Notes grow into a real knowledge base — [[wiki links]] between notes with backlinks, version history with one-tap restore, Print / save-as-PDF, and voice note recordings (native recorder on Android). Plus a cleaned-up dashboard, the task category option removed, and a fix for the on-screen keyboard covering form fields.
+
+---
+
+## ✨ v3.0.0 — Notes, connected
+
+### 🔗 Wiki links & backlinks
+- **`[[Note title]]`** anywhere in a note renders as a clickable link — tap it to jump straight to that note.
+- **Linked notes panel** in the reader shows what this note links to (and flags missing targets) plus **backlinks** — every note that links here.
+
+### 🕘 Version history
+- Every save snapshots the previous version automatically (last 15 per note) — open **History** in the reader to restore any past version, and restoring is itself undoable.
+- Smart caps keep localStorage safe: 300 snapshots total, consecutive identical saves don't duplicate.
+
+### 🖨️ Print / Save as PDF
+- Print button in the reader with a clean print stylesheet — just the note body, no app chrome. Pick "Save as PDF" from any print dialog.
+
+### 🎙️ Voice notes
+- **Mic button in the note editor** — record up to 60 seconds, auto-stops, preview with a built-in player.
+- Android records natively (new `VoiceNotesPlugin`, system mic permission); desktop/web use the browser recorder. Recordings attach like any other file.
+
+### 🛠️ Fixes
+- **On-screen keyboard no longer hides form fields** — the Android app now resizes above the keyboard (`adjustResize`), so every input in dialogs stays visible while typing, on the APK and in mobile browsers too.
+- **Task "category" option removed** — no more category picker when adding a task; the field is gone from the data model and the list (existing categories are simply no longer shown).
+- **Momentum meter replaced by "Today at a glance"** — the dashboard's energy bar and 7-day trend strip are gone; a simple card now shows tasks done, habits done, and minutes focused today.
+- **Note editor is now scrollable on short windows** — the Save button used to sit below the fold on small screens, unreachable; dialogs taller than the viewport now scroll.
+- **Dashboard Habit Streak card is now honest** — the weekday strip used to fake a Mon→Sun pattern by filling bars with the streak length (ignoring the habit's real schedule and which days were actually done). It now shows the strongest habit's actual weekly schedule, with rest days muted, and reads "No habits yet" instead of "0/0" when you have none.
+- **Progress Streak Calendar now counts habit check-ins** — it only counted focus sessions and completed tasks before, so checking a habit never lit a single cell (and the count read "0 active days" mid-streak). Today's habit checks now register on the heatmap.
+
+---
+
+## ✨ v2.2.0 — Work deeper, plan smarter
+
+### 📝 Notes & Docs overhaul
+- **Edit notes** — click any note (or the pencil) to change its title, body, and tag after creating it.
+- **Full-screen reader** — click a note's title or preview to read it rendered: markdown formatting, full-size images, downloadable file chips, and one-tap Edit / Pin / Delete.
+- **Uploads & attachments** — attach **images** (rendered inline) and **files** (downloadable chips) to any note. On Android, saving a file writes it to **Downloads** natively (MediaStore / system picker) — the WebView can't do browser downloads.
+- **Markdown-lite editor** — format with `# headings`, `**bold**`, `*italic*`, `` `code` ``, `-` lists, `- [ ]` checklists and `---` dividers, with a live **Preview** toggle.
+- **Search** notes by title, body, or tag.
+- **Pin** notes to the top, **custom tags** beyond the preset list, and a word count as you type.
+
+### 🔁 Recurring tasks (weekly & monthly)
+- Mark a task **Weekly** or **Monthly** when you create it.
+- Completing a recurring task rolls it forward automatically: same title/project/priority, due date advanced **+7 days** or **+1 month**, ready for the next occurrence.
+- Repeats show a 🔁 badge in the task list and each completion earns XP.
+
+### 🌗 Light & dark mode
+- New **Appearance** setting in Settings — switch between dark and light instantly, in both the desktop app and the APK. Accent colors work in both modes.
+
+### 🔔 Android OS reminders
+- The APK now schedules **real system notifications** before today's timed calendar events (5 minutes early), powered by a native AlarmManager plugin — they fire even when ProFlow is closed.
+- Controlled by the new **"Android event reminders"** preference; the app asks for notification permission once.
 
 ---
 
@@ -31,7 +82,7 @@
 
 | Platform | File |
 |----------|------|
-| **Windows** | `ProFlow-Setup-2.1.0.exe` (NSIS installer — installs to Program Files, Add/Remove Programs support) |
+| **Windows** | `ProFlow-Setup-3.0.0.exe` (NSIS installer — installs to Program Files, Add/Remove Programs support) |
 | **Android** | `app-release.apk` (signed release — install on any phone; allow "install from unknown sources") |
 
 ---
