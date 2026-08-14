@@ -15,7 +15,7 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
-import com.getcapacitor.annotation.PluginCallback;
+import com.getcapacitor.annotation.PermissionCallback;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -83,7 +83,7 @@ public class RemindersPlugin extends Plugin {
     }
   }
 
-  @PluginCallback
+  @PermissionCallback
   private void permissionCallback(PluginCall call) {
     JSObject ret = new JSObject();
     ret.put("granted", notificationsGranted());
