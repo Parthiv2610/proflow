@@ -13,7 +13,7 @@ import {
 import { useLocalStorage } from "@/lib/use-local-storage"
 import { showNotification } from "@/lib/notify"
 import { playChime } from "@/lib/sound"
-import { updateWidgets } from "@/lib/widget-bridge"
+import { updateWidgets, updateHabitWidget, updateTaskWidget } from "@/lib/widget-bridge"
 import { isCapacitor } from "@/lib/lan-sync"
 import { cancelAllReminders } from "@/lib/reminders"
 import { syncAllHabitReminders, cancelAllHabitReminders } from "@/lib/habit-reminders"
@@ -2119,6 +2119,18 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       streak: bestStreak,
       pendingTasks: pending,
     })
+    // Push habit list for interactive habits widget (id|name|done|streak)
+    const todayIdx = (new Date().getDay() + 6) % 7
+    const habitsData = habits
+      .filter((h) => h.week[todayIdx])
+      .map((h) => `${h.id}|${h.name}|${h.doneToday}|${h.streak}`)
+      .join("\n")
+    updateHabitWidget(habitsData)
+    // Push task list for interactive tasks widget (id|title|done|priority)
+    const tasksData = tasks
+      .map((t) => `${t.id}|${t.title}|${t.status === "done"}|${t.priority}`)
+      .join("\n")
+    updateTaskWidget(tasksData)
   }, [tasks, completedTasks, habits, focusLog, bestStreak, recurringLog])
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>

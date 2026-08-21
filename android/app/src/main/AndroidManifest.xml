@@ -68,6 +68,44 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_info_quick_add" />
         </receiver>
+
+        <!-- Interactive Habits widget -->
+        <receiver
+            android:name=".HabitWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info_habits" />
+        </receiver>
+        <service
+            android:name=".HabitListService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+        <receiver
+            android:name=".HabitItemReceiver"
+            android:exported="false" />
+
+        <!-- Interactive Tasks widget -->
+        <receiver
+            android:name=".TaskWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info_tasks" />
+        </receiver>
+        <service
+            android:name=".TaskListService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+        <receiver
+            android:name=".TaskItemReceiver"
+            android:exported="false" />
     </application>
 
     <!-- Permissions -->

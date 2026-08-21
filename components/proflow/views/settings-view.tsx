@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useUpdate } from "@/lib/use-update"
 import { isCapacitor } from "@/lib/lan-sync"
+import { showNotification } from "@/lib/notify"
 import { Card, PageHeader } from "../ui"
 import { useStore, ACCENTS, ACHIEVEMENTS } from "../store"
 
@@ -67,6 +68,7 @@ export function SettingsView() {
   const importInputRef = useRef<HTMLInputElement>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [exported, setExported] = useState(false)
+  const [exportedPath, setExportedPath] = useState<string | null>(null)
   // Parsed backup waiting for confirmation — import replaces current data.
   const [pendingImport, setPendingImport] = useState<Record<string, string> | null>(null)
   // Local string state so the user can clear the field while typing without the
@@ -120,7 +122,11 @@ export function SettingsView() {
       if (isCapacitor()) {
         const backup = (window as any).Capacitor?.Plugins?.Backup
         if (backup?.saveBackup) {
-          await backup.saveBackup({ fileName, content })
+          const res = await backup.saveBackup({ fileName, content })
+          // Show where the file was saved
+          const savedPath = res?.path || "Downloads/"
+          showNotification("ProFlow", `✅ Backup saved to ${savedPath}`)
+          setExportedPath(savedPath)
         } else {
           // Older APKs don't expose the native plugin — fall back to the Web
           // Share API so the share sheet can save the file (Files/Drive/etc).
@@ -132,7 +138,7 @@ export function SettingsView() {
           await nav.share({ files: [file], title: "ProFlow backup" })
         }
         setExported(true)
-        setTimeout(() => setExported(false), 2500)
+        setTimeout(() => { setExported(false); setExportedPath(null) }, 4000)
         setImportError(null)
         return
       }
@@ -446,6 +452,11 @@ export function SettingsView() {
             {exported ? <CheckCircle2 className="size-3.5" /> : <Download className="size-3.5" />}
             {exported ? "Exported!" : "Export data"}
           </button>
+          {exported && exportedPath && (
+            <span className="rounded-lg bg-success/15 px-3 py-1.5 text-xs font-medium text-success">
+              📁 {exportedPath}
+            </span>
+          )}
           <button
             type="button"
             onClick={() => importInputRef.current?.click()}
@@ -462,6 +473,11 @@ export function SettingsView() {
             className="hidden"
           />
         </div>
+        {isCapacitor() && !exported && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            On Android, the file saves to your <span className="font-medium text-foreground">Downloads</span> folder. Look for <span className="font-medium text-foreground">proflow-backup-*.json</span> in your Files app.
+          </p>
+        )}
 
         {pendingImport ? (
           <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-danger/30 bg-danger/5 p-3">

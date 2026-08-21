@@ -16,6 +16,8 @@ type WidgetBridgeApi = {
     streak: number
     pendingTasks: string
   }) => Promise<unknown>
+  updateHabits?: (opts: { habits: string }) => Promise<unknown>
+  updateTasks?: (opts: { tasks: string }) => Promise<unknown>
 }
 
 function plugin(): WidgetBridgeApi | null {
@@ -36,4 +38,31 @@ export async function updateWidgets(data: {
   } catch {
     // widget bridge unavailable — ignore
   }
+}
+
+/** Push habit list data for the interactive habits widget. */
+export async function updateHabitWidget(habitsData: string) {
+  try {
+    await plugin()?.updateHabits?.({ habits: habitsData })
+  } catch {
+    // ignore
+  }
+}
+
+/** Push task list data for the interactive tasks widget. */
+export async function updateTaskWidget(tasksData: string) {
+  try {
+    await plugin()?.updateTasks?.({ tasks: tasksData })
+  } catch {
+    // ignore
+  }
+}
+
+// Listen for widget toggle broadcasts from native and dispatch them to the store
+export function onWidgetToggle(callback: (type: "habit" | "task", id: string) => void) {
+  if (typeof window === "undefined") return
+  window.addEventListener("message", (e: any) => {
+    if (e?.data?.type === "WIDGET_HABIT_TOGGLE") callback("habit", e.data.id)
+    if (e?.data?.type === "WIDGET_TASK_TOGGLE") callback("task", e.data.id)
+  })
 }

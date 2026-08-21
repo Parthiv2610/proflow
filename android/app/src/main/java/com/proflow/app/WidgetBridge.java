@@ -44,8 +44,45 @@ public class WidgetBridge extends Plugin {
         .putString(KEY_PENDING_TASKS, pendingTasks)
         .apply();
 
-    // Tell both widget providers to refresh
+    // Tell widget providers to refresh
     refreshWidgets();
+  }
+
+  /** Push habit list data for the interactive habits widget. */
+  @PluginMethod
+  public void updateHabits(PluginCall call) {
+    String habitsData = call.getString("habits", "");
+    SharedPreferences prefs = getContext().getSharedPreferences(
+        HabitItemReceiver.PREFS, Context.MODE_PRIVATE);
+    prefs.edit().putString(HabitItemReceiver.KEY_HABITS, habitsData).apply();
+    notifyWidgetDataChanged(HabitWidgetProvider.class, R.id.habit_list);
+    JSObject ret = new JSObject();
+    ret.put("ok", true);
+    call.resolve(ret);
+  }
+
+  /** Push task list data for the interactive tasks widget. */
+  @PluginMethod
+  public void updateTasks(PluginCall call) {
+    String tasksData = call.getString("tasks", "");
+    SharedPreferences prefs = getContext().getSharedPreferences(
+        TaskItemReceiver.PREFS, Context.MODE_PRIVATE);
+    prefs.edit().putString(TaskItemReceiver.KEY_TASKS, tasksData).apply();
+    notifyWidgetDataChanged(TaskWidgetProvider.class, R.id.task_list);
+    JSObject ret = new JSObject();
+    ret.put("ok", true);
+    call.resolve(ret);
+  }
+
+  private void notifyWidgetDataChanged(Class<?> providerClass, int viewId) {
+    Context ctx = getContext();
+    AppWidgetManager mgr = AppWidgetManager.getInstance(ctx);
+    ComponentName cn = new ComponentName(ctx, providerClass);
+    int[] ids = mgr.getAppWidgetIds(cn);
+    for (int id : ids) {
+      mgr.notifyAppWidgetViewDataChanged(id, viewId);
+    }
+  }
 
     JSObject ret = new JSObject();
     ret.put("ok", true);
@@ -55,24 +92,19 @@ public class WidgetBridge extends Plugin {
   private void refreshWidgets() {
     Context ctx = getContext();
     AppWidgetManager mgr = AppWidgetManager.getInstance(ctx);
+    refreshProvider(ctx, mgr, TodayWidgetProvider.class);
+    refreshProvider(ctx, mgr, QuickAddWidgetProvider.class);
+    refreshProvider(ctx, mgr, HabitWidgetProvider.class);
+    refreshProvider(ctx, mgr, TaskWidgetProvider.class);
+  }
 
-    // Refresh today widget
-    ComponentName today = new ComponentName(ctx, TodayWidgetProvider.class);
-    int[] todayIds = mgr.getAppWidgetIds(today);
-    if (todayIds.length > 0) {
-      Intent intent = new Intent(ctx, TodayWidgetProvider.class);
+  private void refreshProvider(Context ctx, AppWidgetManager mgr, Class<?> cls) {
+    ComponentName cn = new ComponentName(ctx, cls);
+    int[] ids = mgr.getAppWidgetIds(cn);
+    if (ids.length > 0) {
+      Intent intent = new Intent(ctx, cls);
       intent.setAction(AppWidgetManager.ACTION_APPWIDGET_UPDATE);
-      intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, todayIds);
-      ctx.sendBroadcast(intent);
-    }
-
-    // Refresh quick-add widget
-    ComponentName quick = new ComponentName(ctx, QuickAddWidgetProvider.class);
-    int[] quickIds = mgr.getAppWidgetIds(quick);
-    if (quickIds.length > 0) {
-      Intent intent = new Intent(ctx, QuickAddWidgetProvider.class);
-      intent.setAction(AppWidgetManager.ACTION_APPWIDGET_UPDATE);
-      intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, quickIds);
+      intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids);
       ctx.sendBroadcast(intent);
     }
   }
