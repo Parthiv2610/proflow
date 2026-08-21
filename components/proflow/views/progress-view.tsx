@@ -27,6 +27,7 @@ import {
   xpIntoLevel,
   useStore,
   type Achievement,
+  type CompletedTask,
   type FocusLogEntry,
   type Task,
 } from "../store"
@@ -38,7 +39,7 @@ import { Card, PageHeader, ProgressBar } from "../ui"
  * built from real focus sessions and task completions.
  */
 export function ProgressView() {
-  const { xp, achievements, bestStreak, totalTasksDone, focusLog, tasks, recurringLog, habits, weeklyFocusGoal } = useStore()
+  const { xp, achievements, bestStreak, totalTasksDone, focusLog, tasks, completedTasks, recurringLog, habits, weeklyFocusGoal } = useStore()
 
   const level = levelFor(xp)
   const into = xpIntoLevel(xp)
@@ -62,7 +63,7 @@ export function ProgressView() {
     // Tasks completed within this week ("YYYY-MM-DD" compares lexicographically),
     // including recurring-task occurrences from the completion log.
     const tasksDone =
-      tasks.filter((t) => t.status === "done" && !!t.completedAt && t.completedAt >= mondayKey)
+      completedTasks.filter((t) => !!t.completedAt && t.completedAt >= mondayKey)
         .length + recurringLog.filter((d) => d >= mondayKey).length
 
     // Focus sessions & minutes this week, plus distinct active days.
@@ -76,8 +77,8 @@ export function ProgressView() {
         if (e.sessions > 0) activeDays.add(e.date)
       }
     })
-    tasks.forEach((t) => {
-      if (t.status === "done" && t.completedAt && t.completedAt >= mondayKey) activeDays.add(t.completedAt)
+    completedTasks.forEach((t) => {
+      if (t.completedAt && t.completedAt >= mondayKey) activeDays.add(t.completedAt)
     })
     recurringLog.forEach((d) => {
       if (d >= mondayKey) activeDays.add(d)
@@ -90,7 +91,7 @@ export function ProgressView() {
       hours: Math.round((minutes / 60) * 10) / 10,
       activeDays: activeDays.size,
     }
-  }, [tasks, focusLog, recurringLog])
+  }, [completedTasks, focusLog, recurringLog])
 
   // ── Level curve: cumulative XP per level, with current marker ──
   const curve = useMemo(() => {
@@ -119,8 +120,8 @@ export function ProgressView() {
     }
     // Focus sessions count double, completed tasks count once.
     focusLog.forEach((e) => bump(e.date, e.sessions * 2))
-    tasks.forEach((t) => {
-      if (t.status === "done" && t.completedAt) bump(t.completedAt, 1)
+    completedTasks.forEach((t) => {
+      if (t.completedAt) bump(t.completedAt, 1)
     })
     recurringLog.forEach((d) => bump(d, 1))
 
@@ -152,7 +153,7 @@ export function ProgressView() {
       weeks[col][row] = { date: key, count, isToday: key === todayKeyStr }
     }
     return { weeks, activeDays }
-  }, [focusLog, tasks, recurringLog, habits])
+  }, [focusLog, completedTasks, recurringLog, habits])
 
   const heatColor = (count: number) => {
     if (count <= 0) return "bg-muted"
@@ -418,19 +419,19 @@ export function ProgressView() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="lg:col-span-2 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
-          <ActivityChart focusLog={focusLog} tasks={tasks} recurringLog={recurringLog} />
+          <ActivityChart focusLog={focusLog} tasks={tasks} completedTasks={completedTasks} recurringLog={recurringLog} />
         </Card>
         <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
           <WeeklyTrend focusLog={focusLog} weeklyFocusGoal={weeklyFocusGoal} />
         </Card>
         <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
-          <TaskMixDonut tasks={tasks} />
+          <TaskMixDonut tasks={tasks} completedTasks={completedTasks} />
         </Card>
         <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
-          <WeekdayChart focusLog={focusLog} tasks={tasks} recurringLog={recurringLog} />
+          <WeekdayChart focusLog={focusLog} completedTasks={completedTasks} recurringLog={recurringLog} />
         </Card>
         <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
-          <ProjectBars tasks={tasks} />
+          <ProjectBars tasks={tasks} completedTasks={completedTasks} />
         </Card>
       </div>
     </div>
@@ -454,10 +455,12 @@ function Legend({ color, label }: { color: string; label: string }) {
 function ActivityChart({
   focusLog,
   tasks,
+  completedTasks,
   recurringLog,
 }: {
   focusLog: FocusLogEntry[]
   tasks: Task[]
+  completedTasks: CompletedTask[]
   recurringLog: string[]
 }) {
   const [range, setRange] = useState<7 | 14 | 30>(14)
@@ -473,12 +476,12 @@ function ActivityChart({
       pts.push({
         label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         minutes: entry?.minutes ?? 0,
-        tasks: tasks.filter((t) => t.completedAt === k).length + recurringLog.filter((d) => d === k).length,
+        tasks: completedTasks.filter((t) => t.completedAt === k).length + recurringLog.filter((d) => d === k).length,
         isToday: i === 0,
       })
     }
     return pts
-  }, [focusLog, tasks, recurringLog, range])
+  }, [focusLog, completedTasks, recurringLog, range])
 
   const W = 720
   const H = 250
@@ -703,11 +706,11 @@ function WeeklyTrend({ focusLog, weeklyFocusGoal }: { focusLog: FocusLogEntry[];
 }
 
 // ── Task mix: donut of done / in-progress / to-do ─────────────────────
-function TaskMixDonut({ tasks }: { tasks: Task[] }) {
-  const total = tasks.length
-  const done = tasks.filter((t) => t.status === "done").length
+function TaskMixDonut({ tasks, completedTasks }: { tasks: Task[]; completedTasks: CompletedTask[] }) {
+  const done = completedTasks.length
   const inProg = tasks.filter((t) => t.status === "in-progress").length
-  const todo = total - done - inProg
+  const todo = tasks.filter((t) => t.status === "todo").length
+  const total = done + inProg + todo
   const R = 52
   const C = 2 * Math.PI * R
   let acc = 0
@@ -785,11 +788,11 @@ function TaskMixDonut({ tasks }: { tasks: Task[] }) {
 // ── Weekly rhythm: tasks + focus minutes by weekday (Mon-first) ────────
 function WeekdayChart({
   focusLog,
-  tasks,
+  completedTasks,
   recurringLog,
 }: {
   focusLog: FocusLogEntry[]
-  tasks: Task[]
+  completedTasks: CompletedTask[]
   recurringLog: string[]
 }) {
   const data = useMemo(() => {
@@ -801,8 +804,8 @@ function WeekdayChart({
         const d = new Date(`${e.date}T00:00:00`)
         if (!Number.isNaN(d.getTime()) && (d.getDay() + 6) % 7 === i) minutes += e.minutes
       })
-      tasks.forEach((t) => {
-        if (t.status === "done" && t.completedAt) {
+      completedTasks.forEach((t) => {
+        if (t.completedAt) {
           const d = new Date(`${t.completedAt}T00:00:00`)
           if (!Number.isNaN(d.getTime()) && (d.getDay() + 6) % 7 === i) count++
         }
@@ -813,7 +816,7 @@ function WeekdayChart({
       })
       return { label, minutes, count }
     })
-  }, [focusLog, tasks, recurringLog])
+  }, [focusLog, completedTasks, recurringLog])
 
   const W = 640
   const H = 210
@@ -887,20 +890,28 @@ function WeekdayChart({
 }
 
 // ── By project: task volume per project, completed vs open ─────────────
-function ProjectBars({ tasks }: { tasks: Task[] }) {
+function ProjectBars({ tasks, completedTasks }: { tasks: Task[]; completedTasks: CompletedTask[] }) {
   const rows = useMemo(() => {
     const map = new Map<string, { total: number; done: number }>()
+    // Active tasks count as open
     tasks.forEach((t) => {
       if (!t.project) return
       const r = map.get(t.project) ?? { total: 0, done: 0 }
       r.total++
-      if (t.status === "done") r.done++
+      map.set(t.project, r)
+    })
+    // Completed tasks count as done
+    completedTasks.forEach((t) => {
+      if (!t.project) return
+      const r = map.get(t.project) ?? { total: 0, done: 0 }
+      r.total++
+      r.done++
       map.set(t.project, r)
     })
     return Array.from(map.entries())
       .sort((a, b) => b[1].total - a[1].total)
       .slice(0, 6)
-  }, [tasks])
+  }, [tasks, completedTasks])
   const max = Math.max(...rows.map(([, r]) => r.total), 1)
 
   return (

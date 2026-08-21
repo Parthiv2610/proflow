@@ -13,8 +13,10 @@ import {
 import { useLocalStorage } from "@/lib/use-local-storage"
 import { showNotification } from "@/lib/notify"
 import { playChime } from "@/lib/sound"
+import { updateWidgets } from "@/lib/widget-bridge"
 import { isCapacitor } from "@/lib/lan-sync"
 import { cancelAllReminders } from "@/lib/reminders"
+import { syncAllHabitReminders, cancelAllHabitReminders } from "@/lib/habit-reminders"
 import { celebrate } from "./confetti"
 
 export type View =
@@ -25,11 +27,44 @@ export type View =
   | "habits"
   | "focus"
   | "progress"
+  | "checklists"
   | "notifications"
   | "settings"
 
 export type TaskStatus = "todo" | "in-progress" | "done"
 export type Priority = "low" | "medium" | "high"
+
+// ── Checklists ──────────────────────────────────────────
+export type SubTask = {
+  id: string
+  title: string
+  done: boolean
+}
+
+export type ChecklistItem = {
+  id: string
+  title: string
+  done: boolean
+  priority: Priority
+  due: string // "YYYY-MM-DD" or ""
+  notes: string
+  subtasks: SubTask[]
+  createdAt: string // ISO timestamp
+  completedAt?: string // ISO timestamp
+  order: number // sort order within the list
+}
+
+export type Checklist = {
+  id: string
+  name: string
+  icon: string
+  color: string
+  pinned: boolean
+  items: ChecklistItem[]
+  recurring?: "daily" | "weekly" | "monthly" | null
+  createdAt: string
+  archived?: boolean
+}
 
 export type Task = {
   id: string
@@ -45,6 +80,11 @@ export type Task = {
   recurring?: "weekly" | "monthly"
 }
 
+/** A task that was completed and is kept for 24h so the user can restore it. */
+export type CompletedTask = Task & {
+  completedAtMs: number // epoch ms when marked done — used for 24h expiry
+}
+
 export type Habit = {
   id: string
   name: string
@@ -57,6 +97,9 @@ export type Habit = {
   // revoked through the ledger, and a later re-check legitimately earns again).
   // Check + uncheck nets exactly 0 XP, so this can't be farmed.
   rewardedDay: string
+  // Reminder settings: optional fields for scheduling daily reminders
+  reminderEnabled?: boolean
+  reminderTime?: string // "HH:mm" format, e.g. "09:00"
 }
 
 export type Goal = {
@@ -176,9 +219,11 @@ type Store = {
   setSearch: (s: string) => void
 
   tasks: Task[]
+  completedTasks: CompletedTask[] // recently completed, restorable for 24h
   projects: string[]
   addTask: (t: Omit<Task, "id" | "status"> & { status?: TaskStatus }) => void
   deleteTask: (id: string) => void
+  restoreTask: (id: string) => void // move from completed back to active
   reorderTasks: (ids: string[]) => void
   cycleTaskStatus: (id: string) => void
   setTaskStatus: (id: string, status: TaskStatus) => void
@@ -188,10 +233,10 @@ type Store = {
   ) => void
 
   habits: Habit[]
-  addHabit: (name: string, week?: boolean[]) => void
+  addHabit: (name: string, week?: boolean[], reminderEnabled?: boolean, reminderTime?: string) => void
   deleteHabit: (id: string) => void
   toggleHabit: (id: string) => void
-  updateHabit: (id: string, updates: Partial<Pick<Habit, "name" | "week">>) => void
+  updateHabit: (id: string, updates: Partial<Pick<Habit, "name" | "week" | "reminderEnabled" | "reminderTime">>) => void
 
   goals: Goal[]
   addGoal: (name: string, progress?: number) => void
@@ -286,6 +331,22 @@ type Store = {
   skipTimer: () => void
   stopTimer: () => void
   resetTimer: () => void
+
+  // ── Checklists ──────────────────────────────────────────
+  checklists: Checklist[]
+  addChecklist: (name: string, icon?: string, color?: string) => string
+  updateChecklist: (id: string, updates: Partial<Pick<Checklist, "name" | "icon" | "color" | "pinned" | "recurring" | "archived">>) => void
+  deleteChecklist: (id: string) => void
+  importChecklistFromTemplate: (templateId: string) => string // returns new checklist id
+  // Checklist items
+  addChecklistItem: (listId: string, title: string, priority?: Priority) => void
+  updateChecklistItem: (listId: string, itemId: string, updates: Partial<Pick<ChecklistItem, "title" | "done" | "priority" | "due" | "notes"> & { subtasks?: SubTask[] }>) => void
+  deleteChecklistItem: (listId: string, itemId: string) => void
+  toggleChecklistItem: (listId: string, itemId: string) => void
+  reorderChecklistItems: (listId: string, itemIds: string[]) => void
+  bulkToggleChecklistItems: (listId: string, itemIds: string[], done: boolean) => void
+  clearCompletedItems: (listId: string) => void
+  duplicateChecklist: (listId: string) => void
 }
 
 const StoreContext = createContext<Store | null>(null)
@@ -483,6 +544,8 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [view, setView] = useState<View>("dashboard")
   const [search, setSearch] = useState("")
   const [tasks, setRawTasks] = useLocalStorage<Task[]>("tasks", initialTasks)
+  const [completedTasks, setCompletedTasks] = useLocalStorage<CompletedTask[]>("completedTasks", [])
+  const [checklists, setChecklists] = useLocalStorage<Checklist[]>("checklists", [])
   const [habits, setRawHabits] = useLocalStorage<Habit[]>("habits", initialHabits)
   const [goals, setRawGoals] = useLocalStorage<Goal[]>("goals", initialGoals)
   const [events, setRawEvents] = useLocalStorage<EventItem[]>("events", initialEvents)
@@ -692,20 +755,17 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   // counter and the daily/weekly charts. Capped so the log can't grow forever
   // (a weekly repeat is ~52 entries a year).
   const [recurringLog, setRawRecurringLog] = useLocalStorage<string[]>("recurringLog", [])
-  // Lifetime task-completions counter — tasks currently marked done PLUS every
-  // completed recurring occurrence. Derived, so un-completing a task still
-  // decrements it, and checkTaskMilestones' +1 can never be rolled back by a
-  // later reconciliation (the two sides always agree). Note: completions made
-  // before this log existed are not back-filled — their badges were already
-  // granted at completion time, so nothing is lost.
+  // Lifetime task-completions counter — tasks moved to completedTasks PLUS every
+  // completed recurring occurrence. Note: completions made before this log existed
+  // are not back-filled — their badges were already granted at completion time.
   useEffect(() => {
-    const done = tasks.filter((t) => t.status === "done" && t.completedAt).length
+    const done = completedTasks.length
     const total = done + recurringLog.length
     if (total !== totalTasksRef.current) {
       totalTasksRef.current = total
       setTotalTasksDone(total)
     }
-  }, [tasks, recurringLog, setTotalTasksDone])
+  }, [completedTasks, recurringLog, setTotalTasksDone])
   // Lifetime focus-session counter — kept in sync with the focus log.
   const totalFocusRef = useRef(0)
   useEffect(() => {
@@ -767,8 +827,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     try {
       if (localStorage.getItem("proflow-achievements") !== null) return
       const maxStreak = habits.reduce((m, h) => Math.max(m, h.streak), 0)
-      const tasksDone =
-        tasks.filter((t) => t.status === "done" && t.completedAt).length + recurringLog.length
+      const tasksDone = completedTasks.length + recurringLog.length
       const focusSessions = focusLog.reduce((s, e) => s + e.sessions, 0)
       if (maxStreak > 0) {
         bestStreakRef.current = maxStreak
@@ -788,7 +847,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // storage unavailable — nothing to seed
     }
-  }, [tasks, habits, focusLog, recurringLog, setBestStreak, setTotalTasksDone, setAchievements])
+  }, [tasks, completedTasks, habits, focusLog, recurringLog, setBestStreak, setTotalTasksDone, setAchievements])
 
   const buyShield = useCallback(() => {
     if (shieldsRef.current >= MAX_SHIELDS || xpRef.current < SHIELD_PRICE) return false
@@ -851,6 +910,52 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const setUserName = setRawUserName
   const [avatarUrl, setRawAvatarUrl] = useLocalStorage("avatarUrl", "")
   const setAvatarUrl = setRawAvatarUrl
+
+  // Auto-expire completed tasks after 24 hours
+  useEffect(() => {
+    const now = Date.now()
+    const expiryMs = 24 * 60 * 60 * 1000
+    setCompletedTasks((prev) => prev.filter((t) => now - t.completedAtMs < expiryMs))
+  }, [setCompletedTasks])
+
+  // Periodic cleanup every 10 minutes
+  useEffect(() => {
+    const id = setInterval(() => {
+      const now = Date.now()
+      const expiryMs = 24 * 60 * 60 * 1000
+      setCompletedTasks((prev) => prev.filter((t) => now - t.completedAtMs < expiryMs))
+    }, 10 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [setCompletedTasks])
+
+  // Restore a recently-completed task back to the active list
+  const restoreTask = useCallback(
+    (id: string) => {
+      setCompletedTasks((prev) => {
+        const found = prev.find((t) => t.id === id)
+        if (!found) return prev
+        const restored: Task = {
+          id: found.id,
+          title: found.title,
+          project: found.project,
+          priority: found.priority,
+          status: "todo",
+          due: found.due,
+          overdue: found.overdue,
+          completedAt: undefined,
+          recurring: found.recurring,
+        }
+        setTasks((prevTasks) => {
+          // Avoid duplicates if it somehow already exists
+          if (prevTasks.some((t) => t.id === id)) return prevTasks
+          return [...prevTasks, restored]
+        })
+        return prev.filter((t) => t.id !== id)
+      })
+      showNotification("ProFlow", "↩️ Task restored")
+    },
+    [setCompletedTasks, setTasks],
+  )
 
   // Day rollover for streaks: a scheduled habit day that passes without being
   // completed normally resets the streak — a shield (if held) absorbs the miss.
@@ -953,6 +1058,15 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     }
   }, [runHabitDayCheck])
 
+  // Sync habit reminders on load and whenever habits change.
+  // On desktop this sets setTimeout-based timers; on Android it schedules
+  // AlarmManager alarms via the native Reminders plugin.
+  useEffect(() => {
+    syncAllHabitReminders(habits)
+    // Cleanup: cancel all timers when habits unmount or change
+    return () => { cancelAllHabitReminders(habits) }
+  }, [habits])
+
   // theme + preferences (persisted, applied live)
   const [theme, setRawTheme] = useLocalStorage("settings-theme", "Purple")
   const setTheme = setRawTheme
@@ -997,7 +1111,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     const dayKey = d.toDateString()
     if (notifiedDayRef.current === dayKey) return
     const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-    const overdue = tasks.filter((t) => t.overdue && t.status !== "done").length
+    const overdue = tasks.filter((t) => t.overdue).length
     const eventsToday = events.filter((e) => e.date === today).length
     if (overdue === 0 && eventsToday === 0) return
     notifiedDayRef.current = dayKey
@@ -1391,20 +1505,33 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
         )
         return
       }
-      setTasks((prev) =>
-        prev.map((x) =>
-          x.id === id
-            ? {
-                ...x,
-                status: next,
-                overdue: next === "done" ? false : x.overdue,
-                completedAt: next === "done" && !x.completedAt ? todayKey() : x.completedAt,
-              }
-            : x,
-        ),
-      )
+      // Move completed task to completedTasks (with restore window) instead of
+      // keeping it in the active list.
+      if (next === "done") {
+        const completed: CompletedTask = {
+          ...tasks.find((x) => x.id === id)!,
+          status: "done",
+          overdue: false,
+          completedAt: todayKey(),
+          completedAtMs: Date.now(),
+        }
+        setCompletedTasks((prev) => [...prev, completed])
+        setTasks((prev) => prev.filter((x) => x.id !== id))
+        showNotification("ProFlow", "✅ Task completed — tap undo to restore within 24h")
+      } else {
+        setTasks((prev) =>
+          prev.map((x) =>
+            x.id === id
+              ? {
+                  ...x,
+                  status: next,
+                }
+              : x,
+          ),
+        )
+      }
     },
-    [tasks, addXp, checkTaskMilestones],
+    [tasks, addXp, checkTaskMilestones, setCompletedTasks],
   )
 
   const setTaskStatus = useCallback(
@@ -1432,20 +1559,32 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
         )
         return
       }
+      // Move completed task to completedTasks (with restore window)
+      if (status === "done") {
+        const completed: CompletedTask = {
+          ...t!,
+          status: "done",
+          overdue: false,
+          completedAt: todayKey(),
+          completedAtMs: Date.now(),
+        }
+        setCompletedTasks((prev) => [...prev, completed])
+        setTasks((prev) => prev.filter((x) => x.id !== id))
+        showNotification("ProFlow", "✅ Task completed — tap undo to restore within 24h")
+        return
+      }
       setTasks((prev) =>
         prev.map((x) =>
           x.id === id
             ? {
                 ...x,
                 status,
-                overdue: status === "done" ? false : x.overdue,
-                completedAt: status === "done" && !x.completedAt ? todayKey() : x.completedAt,
               }
             : x,
         ),
       )
     },
-    [tasks, addXp, checkTaskMilestones],
+    [tasks, addXp, checkTaskMilestones, setCompletedTasks],
   )
 
   // Marking a habit done pays out once per day; unchecking is a FULL undo — the
@@ -1497,9 +1636,15 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     [habits, addXp, checkStreakMilestones, setXp, setXpEvents],
   )
 
-  const addHabit = useCallback<Store["addHabit"]>((name, week) => {
+  const addHabit = useCallback<Store["addHabit"]>((name, week, reminderEnabled, reminderTime) => {
     setHabits((prev) => [
-      { id: `h-${Date.now()}`, name, streak: 0, doneToday: false, week: week ?? [true, true, true, true, true, true, false], shields: 0, rewardedDay: "" },
+      {
+        id: `h-${Date.now()}`, name, streak: 0, doneToday: false,
+        week: week ?? [true, true, true, true, true, true, false],
+        shields: 0, rewardedDay: "",
+        reminderEnabled: reminderEnabled ?? false,
+        reminderTime: reminderTime ?? "09:00",
+      },
       ...prev,
     ])
   }, [])
@@ -1660,21 +1805,208 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     setNotifications([])
   }, [])
 
-  const value = useMemo<Store>(
-    () => ({
+  // ── Checklists ──────────────────────────────────────────
+  const addChecklist = useCallback(
+    (name: string, icon = "📝", color = "#9CA3AF") => {
+      const id = `cl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const list: Checklist = {
+        id, name, icon, color, pinned: false, items: [],
+        createdAt: new Date().toISOString(),
+      }
+      setChecklists((prev) => [list, ...prev])
+      return id
+    },
+    [setChecklists],
+  )
+
+  const updateChecklist = useCallback(
+    (id: string, updates: Partial<Pick<Checklist, "name" | "icon" | "color" | "pinned" | "recurring" | "archived">>) => {
+      setChecklists((prev) => prev.map((cl) => (cl.id === id ? { ...cl, ...updates } : cl)))
+    },
+    [setChecklists],
+  )
+
+  const deleteChecklist = useCallback(
+    (id: string) => setChecklists((prev) => prev.filter((cl) => cl.id !== id)),
+    [setChecklists],
+  )
+
+  const importChecklistFromTemplate = useCallback(
+    (templateId: string) => {
+      // Lazy import to avoid circular dep — templates are a pure data module
+      const { CHECKLIST_TEMPLATES } = require("./checklist-templates")
+      const tpl = CHECKLIST_TEMPLATES.find((t: any) => t.id === templateId)
+      if (!tpl) return ""
+      const now = new Date().toISOString()
+      const items: ChecklistItem[] = tpl.items.map((item: any, i: number) => ({
+        id: `cli-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+        title: item.title,
+        done: false,
+        priority: (item.priority ?? "medium") as Priority,
+        due: "",
+        notes: "",
+        subtasks: (item.subtasks ?? []).map((st: string, j: number) => ({
+          id: `st-${Date.now()}-${i}-${j}-${Math.random().toString(36).slice(2, 6)}`,
+          title: st,
+          done: false,
+        })),
+        createdAt: now,
+        order: i,
+      }))
+      const id = `cl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const list: Checklist = {
+        id, name: tpl.name, icon: tpl.icon, color: tpl.color,
+        pinned: false, items, createdAt: now,
+      }
+      setChecklists((prev) => [list, ...prev])
+      return id
+    },
+    [setChecklists],
+  )
+
+  const addChecklistItem = useCallback(
+    (listId: string, title: string, priority: Priority = "medium") => {
+      const item: ChecklistItem = {
+        id: `cli-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        title, done: false, priority, due: "", notes: "", subtasks: [],
+        createdAt: new Date().toISOString(), order: Date.now(),
+      }
+      setChecklists((prev) => prev.map((cl) =>
+        cl.id === listId ? { ...cl, items: [...cl.items, item] } : cl,
+      ))
+    },
+    [setChecklists],
+  )
+
+  const updateChecklistItem = useCallback(
+    (listId: string, itemId: string, updates: Partial<Pick<ChecklistItem, "title" | "done" | "priority" | "due" | "notes"> & { subtasks?: SubTask[] }>) => {
+      setChecklists((prev) => prev.map((cl) => {
+        if (cl.id !== listId) return cl
+        return {
+          ...cl,
+          items: cl.items.map((it) => {
+            if (it.id !== itemId) return it
+            const next = { ...it, ...updates }
+            // Auto-set completedAt when toggling done
+            if (updates.done === true && !it.done) next.completedAt = new Date().toISOString()
+            if (updates.done === false) next.completedAt = undefined
+            return next
+          }),
+        }
+      }))
+    },
+    [setChecklists],
+  )
+
+  const deleteChecklistItem = useCallback(
+    (listId: string, itemId: string) => {
+      setChecklists((prev) => prev.map((cl) =>
+        cl.id === listId ? { ...cl, items: cl.items.filter((it) => it.id !== itemId) } : cl,
+      ))
+    },
+    [setChecklists],
+  )
+
+  const toggleChecklistItem = useCallback(
+    (listId: string, itemId: string) => {
+      setChecklists((prev) => prev.map((cl) => {
+        if (cl.id !== listId) return cl
+        return {
+          ...cl,
+          items: cl.items.map((it) => {
+            if (it.id !== itemId) return it
+            const done = !it.done
+            return {
+              ...it, done,
+              completedAt: done ? new Date().toISOString() : undefined,
+            }
+          }),
+        }
+      }))
+    },
+    [setChecklists],
+  )
+
+  const reorderChecklistItems = useCallback(
+    (listId: string, itemIds: string[]) => {
+      setChecklists((prev) => prev.map((cl) => {
+        if (cl.id !== listId) return cl
+        const map = new Map(cl.items.map((it) => [it.id, it]))
+        return {
+          ...cl,
+          items: itemIds.map((id, i) => ({ ...map.get(id)!, order: i })).filter(Boolean),
+        }
+      }))
+    },
+    [setChecklists],
+  )
+
+  const bulkToggleChecklistItems = useCallback(
+    (listId: string, itemIds: string[], done: boolean) => {
+      const now = new Date().toISOString()
+      setChecklists((prev) => prev.map((cl) => {
+        if (cl.id !== listId) return cl
+        return {
+          ...cl,
+          items: cl.items.map((it) => {
+            if (!itemIds.includes(it.id)) return it
+            return { ...it, done, completedAt: done ? now : undefined }
+          }),
+        }
+      }))
+    },
+    [setChecklists],
+  )
+
+  const clearCompletedItems = useCallback(
+    (listId: string) => {
+      setChecklists((prev) => prev.map((cl) =>
+        cl.id === listId ? { ...cl, items: cl.items.filter((it) => !it.done) } : cl,
+      ))
+    },
+    [setChecklists],
+  )
+
+  const duplicateChecklist = useCallback(
+    (listId: string) => {
+      setChecklists((prev) => {
+        const src = prev.find((cl) => cl.id === listId)
+        if (!src) return prev
+        const now = new Date().toISOString()
+        const id = `cl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const dup: Checklist = {
+          ...src,
+          id,
+          name: `${src.name} (copy)`,
+          pinned: false,
+          createdAt: now,
+          items: src.items.map((it, i) => ({
+            ...it,
+            id: `cli-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+            done: false,
+            completedAt: undefined,
+            createdAt: now,
+            subtasks: it.subtasks.map((st, j) => ({
+              ...st,
+              id: `st-${Date.now()}-${i}-${j}-${Math.random().toString(36).slice(2, 6)}`,
+              done: false,
+            })),
+          })),
+        }
+        return [dup, ...prev]
+      })
+    },
+    [setChecklists],
+  )
+
+  const value = useMemo<Store>(() => ({
       view,
       setView,
       search,
-      setSearch,
-      tasks,
+      setSearch,      tasks,
+      completedTasks,
       projects,
-      addTask,
-      deleteTask,
-      reorderTasks,
-      cycleTaskStatus,
-      setTaskStatus,
-      updateTask,
-      habits,
+      addTask, deleteTask, restoreTask, reorderTasks, cycleTaskStatus, setTaskStatus, updateTask, habits,
       addHabit,
       deleteHabit,
       toggleHabit,
@@ -1750,9 +2082,12 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     skipTimer,
     stopTimer,
     resetTimer,
+    checklists, addChecklist, updateChecklist, deleteChecklist, importChecklistFromTemplate,
+    addChecklistItem, updateChecklistItem, deleteChecklistItem, toggleChecklistItem,
+    reorderChecklistItems, bulkToggleChecklistItems, clearCompletedItems, duplicateChecklist,
   }),
     [
-      view, search, tasks, projects, addTask, deleteTask, reorderTasks, cycleTaskStatus, setTaskStatus, updateTask, habits,
+      view, search, tasks, completedTasks, projects, addTask, deleteTask, restoreTask, reorderTasks, cycleTaskStatus, setTaskStatus, updateTask, habits,
       addHabit, deleteHabit, toggleHabit, updateHabit, goals, addGoal, updateGoal, deleteGoal, events, addEvent, updateEvent, deleteEvent,
       notes, addNote, updateNote, deleteNote, notifications, markRead, markAllRead, deleteNotification, clearNotifications,
       focusMode, toggleFocusMode, sidebarOpen, toggleSidebar, closeSidebar, userName, setUserName, avatarUrl, setAvatarUrl,
@@ -1764,8 +2099,27 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       setBreakMinutes,
       startTimer, pauseTimer, toggleTimer, skipTimer, stopTimer, resetTimer,
       weeklyFocusGoal, setWeeklyFocusGoal,
+      checklists, addChecklist, updateChecklist, deleteChecklist, importChecklistFromTemplate,
+      addChecklistItem, updateChecklistItem, deleteChecklistItem, toggleChecklistItem,
+      reorderChecklistItems, bulkToggleChecklistItems, clearCompletedItems, duplicateChecklist,
     ],
   )
+
+  // Push today's data to native Android widgets on every relevant change
+  useEffect(() => {
+    const today = todayKey()
+    const pending = tasks
+      .filter((t) => t.status !== "done")
+      .map((t) => t.title)
+      .join("\n")
+    updateWidgets({
+      tasksDone: completedTasks.filter((t) => t.completedAt === today).length + recurringLog.filter((d) => d === today).length,
+      habitsDone: habits.filter((h) => h.doneToday).length,
+      focusMinutes: focusLog.find((e) => e.date === today)?.minutes ?? 0,
+      streak: bestStreak,
+      pendingTasks: pending,
+    })
+  }, [tasks, completedTasks, habits, focusLog, bestStreak, recurringLog])
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }

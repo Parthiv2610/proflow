@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { FolderPlus, Plus, Search } from "lucide-react"
+import { Check, FolderPlus, Plus, Search, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { DragSortContainer, DragSortItem } from "../drag-sort"
@@ -10,11 +10,11 @@ import { CaptureDialog } from "../capture-dialog"
 import { useStore, type Task, type TaskStatus } from "../store"
 import { PageHeader } from "../ui"
 
-const statusFilters: { id: TaskStatus | "all"; label: string }[] = [
+const statusFilters: { id: TaskStatus | "all" | "recently-completed"; label: string }[] = [
   { id: "all", label: "All" },
   { id: "todo", label: "To Do" },
   { id: "in-progress", label: "In Progress" },
-  { id: "done", label: "Done" },
+  { id: "recently-completed", label: "Recently done" },
 ]
 
 // Accent tokens (globals.css) — the same family the calendar uses for events.
@@ -34,8 +34,8 @@ export function TasksView({
   onCapture: () => void
   onNewProject: (name: string) => void
 }) {
-  const { tasks, projects, search, setSearch, cycleTaskStatus, deleteTask, reorderTasks } = useStore()
-  const [status, setStatus] = useState<TaskStatus | "all">("all")
+  const { tasks, completedTasks, projects, search, setSearch, cycleTaskStatus, deleteTask, reorderTasks, restoreTask } = useStore()
+  const [status, setStatus] = useState<TaskStatus | "all" | "recently-completed">("all")
   // The task currently being edited — opens the capture dialog in edit mode.
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   // "all" shows every task; "" is the Inbox (tasks without a project); any other
@@ -46,7 +46,7 @@ export function TasksView({
     all: tasks.length,
     todo: tasks.filter((t) => t.status === "todo").length,
     "in-progress": tasks.filter((t) => t.status === "in-progress").length,
-    done: tasks.filter((t) => t.status === "done").length,
+    "recently-completed": completedTasks.length,
   } as Record<string, number>
 
   const tabs = useMemo(() => {
@@ -74,6 +74,17 @@ export function TasksView({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
+    // "recently-completed" shows completed tasks from the restore pool
+    if (status === "recently-completed") {
+      return completedTasks.filter((t) => {
+        if (projectTab !== "all") {
+          if (projectTab === "" && t.project) return false
+          if (projectTab !== "" && t.project !== projectTab) return false
+        }
+        if (q && !`${t.title} ${t.project}`.toLowerCase().includes(q)) return false
+        return true
+      })
+    }
     return tasks.filter((t) => {
       if (status !== "all" && t.status !== status) return false
       if (projectTab === "all") {
@@ -86,7 +97,7 @@ export function TasksView({
       if (q && !`${t.title} ${t.project}`.toLowerCase().includes(q)) return false
       return true
     })
-  }, [tasks, status, projectTab, search])
+  }, [tasks, completedTasks, status, projectTab, search])
 
   // On a single tab (Inbox or one project) show a flat list; on "All" group by
   // project so each project is still its own section.
@@ -120,7 +131,7 @@ export function TasksView({
     <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6">
       <PageHeader
         title="Tasks & Projects"
-        subtitle={`${counts.todo + counts["in-progress"]} active · ${counts.done} completed · ${tasks.filter((t) => t.overdue && t.status !== "done").length} overdue`}
+        subtitle={`${counts.todo + counts["in-progress"]} active · ${counts["recently-completed"]} recently done · ${tasks.filter((t) => t.overdue).length} overdue`}
       >
         <div className="flex items-center gap-2">
           <Button
@@ -199,7 +210,47 @@ export function TasksView({
         ))}
       </div>
 
-      {single ? (
+      {/* Recently completed view — restore button instead of toggle/delete */}
+      {status === "recently-completed" ? (
+        filtered.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border p-12 text-center">
+            <p className="text-sm text-muted-foreground">No recently completed tasks.</p>
+            <p className="mt-1 text-xs text-muted-foreground/60">Completed tasks auto-delete after 24 hours.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {filtered.map((t) => {
+              const ct = t as import("../store").CompletedTask
+              const hoursAgo = Math.round((Date.now() - ct.completedAtMs) / (1000 * 60 * 60))
+              const remaining = Math.max(0, 24 - hoursAgo)
+              return (
+                <div
+                  key={t.id}
+                  className="group flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-3 opacity-70 transition-colors hover:opacity-100"
+                >
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-md border border-success bg-success text-success-foreground">
+                    <Check className="size-3.5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium line-through text-muted-foreground">{t.title}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground/60">
+                      {t.project && `${t.project} · `}{remaining}h until auto-delete
+                    </span>
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => restoreTask(t.id)}
+                    className="gap-1.5 text-xs"
+                  >
+                    <Undo2 className="size-3.5" /> Restore
+                  </Button>
+                </div>
+              )
+            })}
+          </div>
+        )
+      ) : single ? (
         filtered.length === 0 ? (
           emptyState
         ) : (

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Check, CheckCircle2, Flame, Pencil, Plus, Shield, Target, Trash2 } from "lucide-react"
+import { Check, CheckCircle2, Flame, Bell, BellOff, Pencil, Plus, Shield, Target, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   FREE_SHIELD_EVERY_LEVELS,
@@ -70,6 +70,8 @@ export function HabitsView() {
   const [habitOpen, setHabitOpen] = useState(false)
   const [habitName, setHabitName] = useState("")
   const [habitWeek, setHabitWeek] = useState<boolean[]>([true, true, true, true, true, true, false])
+  const [habitReminderEnabled, setHabitReminderEnabled] = useState(false)
+  const [habitReminderTime, setHabitReminderTime] = useState("09:00")
   const [editingHabit, setEditingHabit] = useState<(typeof habits)[number] | null>(null)
 
   // add-goal modal state
@@ -83,6 +85,8 @@ export function HabitsView() {
     setEditingHabit(null)
     setHabitName("")
     setHabitWeek(DEFAULT_WEEK)
+    setHabitReminderEnabled(false)
+    setHabitReminderTime("09:00")
     setHabitOpen(true)
   }
 
@@ -90,6 +94,8 @@ export function HabitsView() {
     setEditingHabit(h)
     setHabitName(h.name)
     setHabitWeek([...h.week])
+    setHabitReminderEnabled(h.reminderEnabled ?? false)
+    setHabitReminderTime(h.reminderTime ?? "09:00")
     setHabitOpen(true)
   }
 
@@ -98,12 +104,19 @@ export function HabitsView() {
     const name = habitName.trim()
     if (!name) return
     if (editingHabit) {
-      updateHabit(editingHabit.id, { name, week: habitWeek })
+      updateHabit(editingHabit.id, {
+        name,
+        week: habitWeek,
+        reminderEnabled: habitReminderEnabled,
+        reminderTime: habitReminderTime,
+      })
     } else {
-      addHabit(name, habitWeek)
+      addHabit(name, habitWeek, habitReminderEnabled, habitReminderTime)
     }
     setHabitName("")
     setHabitWeek(DEFAULT_WEEK)
+    setHabitReminderEnabled(false)
+    setHabitReminderTime("09:00")
     setEditingHabit(null)
     setHabitOpen(false)
   }
@@ -366,6 +379,38 @@ export function HabitsView() {
                 </button>
               ))}
             </div>
+          </div>
+          {/* Reminder toggle + time */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">Reminder</span>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setHabitReminderEnabled(!habitReminderEnabled)}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  habitReminderEnabled
+                    ? "bg-primary/15 text-primary"
+                    : "bg-muted text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {habitReminderEnabled ? <Bell className="size-4" /> : <BellOff className="size-4" />}
+                {habitReminderEnabled ? "On" : "Off"}
+              </button>
+              {habitReminderEnabled && (
+                <input
+                  type="time"
+                  value={habitReminderTime}
+                  onChange={(e) => setHabitReminderTime(e.target.value)}
+                  className="h-9 w-32 rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+                />
+              )}
+            </div>
+            {habitReminderEnabled && (
+              <p className="text-xs text-muted-foreground">
+                You&apos;ll be notified at {habitReminderTime} on scheduled days.
+              </p>
+            )}
           </div>
           <div className="mt-1 flex justify-end gap-2">
             <Button

@@ -1,6 +1,6 @@
 "use client"
 
-import { Calendar, LayoutDashboard, ListTodo, Settings } from "lucide-react"
+import { Calendar, CheckSquare, LayoutDashboard, ListTodo, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useStore, type View } from "./store"
 
@@ -13,11 +13,12 @@ type TabItem = {
 
 export function BottomTabs() {
   const { view, setView, tasks, closeSidebar } = useStore()
-  const overdueCount = tasks.filter((t) => t.overdue && t.status !== "done").length
+  const overdueCount = tasks.filter((t) => t.overdue).length
 
   const tabs: TabItem[] = [
     { id: "dashboard", label: "Home", icon: LayoutDashboard },
     { id: "tasks", label: "Tasks", icon: ListTodo, badge: overdueCount },
+    { id: "checklists", label: "Lists", icon: CheckSquare },
     { id: "calendar", label: "Calendar", icon: Calendar },
     { id: "settings", label: "Settings", icon: Settings },
   ]

@@ -49,7 +49,7 @@ function nudge(
 }
 
 export function EncouragementCard() {
-  const { tasks, habits, focusLog, xp } = useStore()
+  const { tasks, completedTasks, habits, focusLog, xp } = useStore()
 
   const quote = useMemo(() => {
     const d = new Date()
@@ -59,8 +59,8 @@ export function EncouragementCard() {
     return QUOTES[dayOfYear % QUOTES.length]
   }, [])
 
-  const done = tasks.filter((t) => t.status === "done").length
-  const activeLeft = tasks.filter((t) => t.status !== "done").length
+  const done = completedTasks.length
+  const activeLeft = tasks.length
   const habitsDone = habits.filter((h) => h.doneToday).length
   const weekHours = useMemo(() => {
     const now = new Date()

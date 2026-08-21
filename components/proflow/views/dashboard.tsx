@@ -16,16 +16,16 @@ import {
   TriangleAlert,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { DragSortContainer, DragSortItem } from "../drag-sort"
+
 import { FocusChart } from "../focus-chart"
 import { EncouragementCard } from "../encouragement"
+import { StreakCalendar } from "../streak-calendar"
 import { WeeklyWrap } from "../weekly-wrap"
-import { TaskRow } from "../task-row"
+
 import { useStore, MAX_SHIELDS, type EventItem, type View } from "../store"
 import { Card, CircularProgress, ProgressBar } from "../ui"
 
 // Monday-first day letters for the habit schedule strip (matches Habit.week[]).
-const WEEK_DAYS = ["M", "T", "W", "T", "F", "S", "S"]
 
 function greeting() {
   const h = new Date().getHours()
@@ -79,29 +79,20 @@ export function Dashboard() {
       hour12: true,
     })
   }
-  const { tasks, habits, goals, events, notes, setView, cycleTaskStatus, deleteTask, reorderTasks, toggleHabit, userName, focusLog, recurringLog, streakShields } = useStore()
+  const { tasks, completedTasks, habits, goals, events, notes, setView, toggleHabit, userName, focusLog, recurringLog, streakShields } = useStore()
 
-  const done = tasks.filter((t) => t.status === "done").length
-  const total = tasks.length
+  const done = completedTasks.length
+  const total = tasks.length + done
   const pct = total ? Math.round((done / total) * 100) : 0
-  const overdue = tasks.filter((t) => t.overdue && t.status !== "done")
-  const activeTasks = tasks.filter((t) => t.status !== "done").slice(0, 6)
-  const activeIds = activeTasks.map((t) => t.id)
-
-  const handleDashboardReorder = useCallback(
-    (ids: string[]) => {
-      reorderTasks(ids)
-    },
-    [reorderTasks],
-  )
+  const overdue = tasks.filter((t) => t.overdue)
   const habitsToday = habits.filter((h) => h.doneToday).length
 
   // Today at a glance — simple counts of what's been done today. Tasks count
-  // date-stamped completions (including recurring rollovers); habits only
-  // store "done today", and focus comes from today's session log.
+  // date-stamped completions from completedTasks (including recurring rollovers);
+  // habits only store "done today", and focus comes from today's session log.
   const today = todayStr()
   const tasksToday =
-    tasks.filter((t) => t.status === "done" && t.completedAt === today).length +
+    completedTasks.filter((t) => t.completedAt === today).length +
     recurringLog.filter((d) => d === today).length
   const focusToday = focusLog.find((e) => e.date === today)
   const focusSessionsToday = focusToday?.sessions ?? 0
@@ -135,7 +126,7 @@ export function Dashboard() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-balance">{greeting()}{userName ? `, ${userName.split(" ")[0]}` : ""}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {formatDateLong()} · <span className="tabular-nums text-foreground/80">{formatTime12(now)}</span> · {tasks.filter((t) => t.status !== "done").length} tasks due today ·{" "}
+            {formatDateLong()} · <span className="tabular-nums text-foreground/80">{formatTime12(now)}</span> · {tasks.length} tasks due today ·{" "}
             <span className="text-danger">{overdue.length} overdue</span>
           </p>
         </div>
@@ -231,7 +222,7 @@ export function Dashboard() {
             </Card>
             </div>
 
-            {/* Habit Streak */}
+            {/* Habit Streak Calendar */}
             <div className="animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-both" style={{ animationDelay: "100ms" }}>
             <Card className="transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
               <div className="flex items-start justify-between">
@@ -260,32 +251,9 @@ export function Dashboard() {
                   </span>
                 </span>
               </div>
-              {bestHabit && (
-                <div className="mt-4">
-                  <div
-                    className="flex items-center justify-between gap-1"
-                    title={`${bestHabit.name} is scheduled on the highlighted days`}
-                  >
-                    {WEEK_DAYS.map((d, i) => (
-                      <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
-                        <span
-                          className={cn("h-6 w-full rounded-md", bestHabit.week[i] ? "bg-focus" : "bg-muted")}
-                          title={`${d} — ${bestHabit.week[i] ? "scheduled" : "rest day"}`}
-                        />
-                        <span
-                          className={cn(
-                            "text-[10px]",
-                            bestHabit.week[i] ? "font-medium text-foreground" : "text-muted-foreground",
-                          )}
-                        >
-                          {d}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mt-2 text-[11px] text-muted-foreground">{bestHabit.name}&apos;s weekly schedule</p>
-                </div>
-              )}
+              <div className="mt-4">
+                <StreakCalendar habit={bestHabit} className="rounded-xl bg-secondary/30 p-3" />
+              </div>
             </Card>
             </div>
 
@@ -375,41 +343,6 @@ export function Dashboard() {
 
           <FocusChart />
 
-          <Card>
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <h2 className="text-lg font-semibold">Today&apos;s Tasks</h2>
-                <p className="text-sm text-muted-foreground">
-                  {tasks.filter((t) => t.status !== "done").length} active
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setView("tasks")}
-                className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-              >
-                View all <ArrowRight className="size-3.5" />
-              </button>
-            </div>
-            <div className="mt-4">
-              {activeTasks.length === 0 ? (
-                <p className="py-4 text-center text-sm text-muted-foreground">No active tasks — all caught up!</p>
-              ) : (
-                <DragSortContainer ids={activeIds} onReorder={handleDashboardReorder} className="flex flex-col gap-2">
-                  {activeTasks.map((t) => (
-                    <DragSortItem key={t.id} id={t.id}>
-                      <TaskRow
-                        task={t}
-                        dragHandle
-                        onToggle={() => cycleTaskStatus(t.id)}
-                        onDelete={() => deleteTask(t.id)}
-                      />
-                    </DragSortItem>
-                  ))}
-                </DragSortContainer>
-              )}
-            </div>
-          </Card>
         </>
       )}
 

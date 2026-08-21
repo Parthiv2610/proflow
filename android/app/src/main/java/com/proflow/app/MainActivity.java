@@ -15,6 +15,7 @@ public class MainActivity extends BridgeActivity {
     registerPlugin(BackupPlugin.class);
     registerPlugin(RemindersPlugin.class);
     registerPlugin(VoiceNotesPlugin.class);
+    registerPlugin(WidgetBridge.class);
     super.onCreate(savedInstanceState);
   }
 }

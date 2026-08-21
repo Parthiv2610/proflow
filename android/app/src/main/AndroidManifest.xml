@@ -44,6 +44,30 @@
         <receiver
             android:name=".ReminderReceiver"
             android:exported="false" />
+
+        <!-- Today at a Glance widget -->
+        <receiver
+            android:name=".TodayWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info_today" />
+        </receiver>
+
+        <!-- Quick Add widget -->
+        <receiver
+            android:name=".QuickAddWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info_quick_add" />
+        </receiver>
     </application>
 
     <!-- Permissions -->

@@ -3,6 +3,7 @@
 import {
   Bell,
   Calendar,
+  CheckSquare,
   FileText,
   Flame,
   LayoutDashboard,
@@ -12,6 +13,7 @@ import {
   Timer,
   Trophy,
 } from "lucide-react"
+import { StreakCalendar } from "./streak-calendar"
 import { cn } from "@/lib/utils"
 import { useStore, type View } from "./store"
 
@@ -33,12 +35,13 @@ const workspace: NavItem[] = [
 const tools: NavItem[] = [
   { id: "notes", label: "Notes & Docs", icon: FileText, hint: "Quick notes with tags" },
   { id: "habits", label: "Habits & Goals", icon: Target, hint: "Track daily routines and goal progress" },
+  { id: "checklists", label: "Checklists", icon: CheckSquare, hint: "Lists, templates & subtasks" },
   { id: "focus", label: "Focus Timer", icon: Timer, hint: "Pomodoro sessions for focus" },
 ]
 
 export function Sidebar() {
   const { view, setView, tasks, habits, notifications, userName, avatarUrl, sessionCount } = useStore()
-  const overdueCount = tasks.filter((t) => t.overdue && t.status !== "done").length
+  const overdueCount = tasks.filter((t) => t.overdue).length
   const unread = notifications.filter((n) => !n.read).length
   const maxStreak = habits.length > 0 ? Math.max(...habits.map((h) => h.streak)) : 0
   const showHints = sessionCount < 5
@@ -75,20 +78,17 @@ export function Sidebar() {
           ))}
         </NavGroup>
 
-        <div className="mt-6 rounded-2xl border border-sidebar-border bg-gradient-to-b from-accent/60 to-transparent p-4">
-          <div className="flex items-center gap-2">
+        <div className="mt-6 rounded-2xl border border-sidebar-border bg-gradient-to-b from-accent/60 to-transparent p-3">
+          <div className="flex items-center gap-2 mb-2">
             <Flame className="size-4 text-focus" />
             <span className="text-sm font-semibold text-sidebar-foreground">{maxStreak > 0 ? `${maxStreak}-day streak` : "Start a habit"}</span>
           </div>
-          <div className="mt-3 flex gap-1">
-            {Array.from({ length: 14 }).map((_, i) => (
-              <span
-                key={i}
-                className={cn("h-1.5 flex-1 rounded-full", i < maxStreak ? "bg-focus" : "bg-muted")}
-              />
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">{maxStreak > 0 ? "Keep it going!" : "Create a habit to get started"}</p>
+          <StreakCalendar
+            habit={habits.length > 0 ? habits.reduce((a, b) => (b.streak > a.streak ? b : a)) : null}
+            compact
+            className="rounded-xl bg-background/50 p-2"
+          />
+          <p className="mt-2 text-xs text-muted-foreground">{maxStreak > 0 ? "Keep it going!" : "Create a habit to get started"}</p>
         </div>
       </nav>
 

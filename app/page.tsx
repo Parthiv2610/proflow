@@ -14,6 +14,7 @@ import { NotesView } from "@/components/proflow/views/notes-view"
 import { NotificationsView } from "@/components/proflow/views/notifications-view"
 import { SettingsView } from "@/components/proflow/views/settings-view"
 import { TasksView } from "@/components/proflow/views/tasks-view"
+import { ChecklistsView } from "@/components/proflow/views/checklists-view"
 import { ProFlowProvider, useStore, SIDEBAR_DRAWER_MAX } from "@/components/proflow/store"
 import { Sidebar } from "@/components/proflow/sidebar"
 import { Topbar } from "@/components/proflow/topbar"
@@ -109,6 +110,7 @@ function Workspace() {
             {view === "habits" && <HabitsView />}
             {view === "focus" && <FocusView />}
             {view === "progress" && <ProgressView />}
+            {view === "checklists" && <ChecklistsView />}
             {view === "notifications" && <NotificationsView />}
             {view === "settings" && <SettingsView />}
           </AnimatedView>

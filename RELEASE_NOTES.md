@@ -1,6 +1,41 @@
 # 🚀 ProFlow — Release Notes
 
-> ℹ️ **Latest update (v3.0.0):** Notes grow into a real knowledge base — [[wiki links]] between notes with backlinks, version history with one-tap restore, Print / save-as-PDF, and voice note recordings (native recorder on Android). Plus a cleaned-up dashboard, the task category option removed, and a fix for the on-screen keyboard covering form fields.
+> ℹ️ **Latest update (v3.1.0):** Full-featured checklists, habit reminder notifications, streak calendar, phone widgets, auto-delete completed tasks with 24h restore, and more.
+
+---
+
+## ✨ v3.1.0 — Checklists, reminders & widgets
+
+### ✅ Checklists — full-featured checklist app built in
+- **Unlimited checklists** with custom names, 30+ emoji icons, and 15 color options.
+- **Items** with check/uncheck, priority (low/medium/high), due dates, notes, and **subtasks**.
+- **Progress tracking** — per-list progress bar with percentage.
+- **Sort & filter** — by priority, due date, alphabetical, or manual drag order.
+- **Bulk actions** — select multiple items to check, uncheck, or delete.
+- **20+ templates** — Grocery, Travel, Camping, Moving, Deep Clean, Project Launch, Wedding, Gym Workout, Tax Prep, Study Session, and more.
+- **Pin, archive, duplicate** — organize your lists.
+- **Search** across items, notes, and subtasks.
+
+### 🔔 Habit reminder notifications (PC + mobile)
+- **Per-habit reminder toggle** — set a time for each habit and get notified on scheduled days.
+- **Desktop** — browser notifications via `setTimeout` when the app is open.
+- **Android** — AlarmManager notifications via the native Reminders plugin, fires even when ProFlow is closed.
+
+### 📅 Streak calendar replaces the old bar
+- **Sidebar** — compact monthly calendar showing the strongest habit's streak with green (done), red (missed), and muted (rest) cells.
+- **Dashboard** — full-size calendar with month navigation, color legend, and streak badge.
+- Replaces the old 14-segment bar and the weekly schedule display.
+
+### 📱 Home screen widgets (Android)
+- **"Today at a Glance"** — 4×2 widget showing tasks done, habits done, focus time, and streak.
+- **"Quick Add"** — 4×1 widget that opens the app for fast task entry.
+- Data synced from the WebView via a new `WidgetBridge` Capacitor plugin + SharedPreferences.
+
+### ♻️ Auto-delete completed tasks with 24h restore
+- Completed tasks are **removed from the active list immediately** and moved to a "Recently done" pool.
+- **Restore any task within 24 hours** from the "Recently done" tab — safe from misclicks.
+- Tasks auto-expire after 24 hours.
+- Dashboard, progress charts, and encouragement card all updated to reflect the new flow.
 
 ---
 
