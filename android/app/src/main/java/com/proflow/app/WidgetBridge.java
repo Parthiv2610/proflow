@@ -79,14 +79,8 @@ public class WidgetBridge extends Plugin {
     AppWidgetManager mgr = AppWidgetManager.getInstance(ctx);
     ComponentName cn = new ComponentName(ctx, providerClass);
     int[] ids = mgr.getAppWidgetIds(cn);
-    for (int id : ids) {
-      mgr.notifyAppWidgetViewDataChanged(id, viewId);
+    for (int id : ids) {        mgr.notifyAppWidgetViewDataChanged(id, viewId);
     }
-  }
-
-    JSObject ret = new JSObject();
-    ret.put("ok", true);
-    call.resolve(ret);
   }
 
   private void refreshWidgets() {
