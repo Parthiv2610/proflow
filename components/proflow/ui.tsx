@@ -37,8 +37,14 @@ export function ProgressBar({
   return (
     <div className={cn("h-2 w-full overflow-hidden rounded-full bg-muted", className)}>
       <div
-        className={cn("h-full rounded-full transition-all duration-700 ease-out", tones[tone])}
-        style={{ width: `${Math.min(100, Math.max(0, value))}%`, transition: "width 0.7s cubic-bezier(0.34, 1.56, 0.64, 1)" }}
+        className={cn("h-full rounded-full transition-all duration-700 ease-out")}
+        style={{
+          width: `${Math.min(100, Math.max(0, value))}%`,
+          transition: "width 0.7s cubic-bezier(0.34, 1.56, 0.64, 1)",
+          background: tone === "success" ? "linear-gradient(90deg, var(--success), color-mix(in srgb, var(--success) 70%, var(--primary)))"
+            : tone === "primary" ? "linear-gradient(90deg, var(--primary), color-mix(in srgb, var(--primary) 70%, var(--info)))"
+            : tones[tone],
+        }}
       />
     </div>
   )

@@ -101,7 +101,7 @@ function Workspace() {
           <Topbar onCapture={handleCapture} />
         </div>
 
-        <main className="relative flex-1 overflow-y-auto">
+        <main className="relative flex-1 overflow-y-auto" style={{ background: "radial-gradient(ellipse 80% 50% at 50% -20%, color-mix(in srgb, var(--primary) 4%, transparent), transparent)" }}>
           <AnimatedView key={view}>
             {view === "dashboard" && <Dashboard />}
             {view === "tasks" && <TasksView onCapture={handleCapture} onNewProject={handleNewProject} />}

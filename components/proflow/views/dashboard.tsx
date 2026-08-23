@@ -78,58 +78,87 @@ export function Dashboard() {
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-5 p-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">{greeting()}{userName ? `, ${userName.split(" ")[0]}` : ""}</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">{formatDateLong()}</p>
+      {/* Hero header with gradient */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6">
+        <div className="absolute -top-12 -right-12 size-32 rounded-full bg-primary/5 blur-3xl" />
+        <div className="absolute -bottom-8 -left-8 size-24 rounded-full bg-focus/5 blur-2xl" />
+        <div className="relative">
+          <h1 className="text-2xl font-bold tracking-tight">{greeting()}{userName ? `, ${userName.split(" ")[0]}` : ""}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{formatDateLong()}</p>
+        </div>
       </div>
 
-      {/* Quick stats row */}
+      {/* Quick stats row — each with a colored left accent */}
       <div className="stagger grid grid-cols-3 gap-3">
-        <Card className="py-3 px-4">
-          <p className="text-xs text-muted-foreground">Tasks</p>
-          <AnimatedNumber value={tasksToday} className="text-2xl font-bold" suffix=" " /><span className="text-sm font-normal text-muted-foreground">done</span>
-        </Card>
-        <Card className="py-3 px-4">
-          <p className="text-xs text-muted-foreground">Habits</p>
-          <AnimatedNumber value={habitsToday} className="text-2xl font-bold" suffix=" " /><span className="text-sm font-normal text-muted-foreground">done</span>
-        </Card>
-        <Card className="py-3 px-4">
-          <p className="text-xs text-muted-foreground">Focus</p>
-          <AnimatedNumber value={focusMinutesToday} className="text-2xl font-bold" suffix=" " /><span className="text-sm font-normal text-muted-foreground">min</span>
-        </Card>
+        <div className="group rounded-2xl border border-border bg-card p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.99]">
+          <div className="flex items-center gap-2">
+            <span className="size-1.5 rounded-full bg-primary" />
+            <p className="text-xs text-muted-foreground">Tasks</p>
+          </div>
+          <div className="mt-2">
+            <AnimatedNumber value={tasksToday} className="text-3xl font-bold text-primary" suffix=" " /><span className="text-sm text-muted-foreground">done</span>
+          </div>
+        </div>
+        <div className="group rounded-2xl border border-border bg-card p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.99]">
+          <div className="flex items-center gap-2">
+            <span className="size-1.5 rounded-full bg-focus" />
+            <p className="text-xs text-muted-foreground">Habits</p>
+          </div>
+          <div className="mt-2">
+            <AnimatedNumber value={habitsToday} className="text-3xl font-bold text-focus" suffix=" " /><span className="text-sm text-muted-foreground">done</span>
+          </div>
+        </div>
+        <div className="group rounded-2xl border border-border bg-card p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.99]">
+          <div className="flex items-center gap-2">
+            <span className="size-1.5 rounded-full bg-info" />
+            <p className="text-xs text-muted-foreground">Focus</p>
+          </div>
+          <div className="mt-2">
+            <AnimatedNumber value={focusMinutesToday} className="text-3xl font-bold text-info" suffix=" " /><span className="text-sm text-muted-foreground">min</span>
+          </div>
+        </div>
       </div>
 
       {/* Streak + Completion */}
       <div className="stagger grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Card className="px-4 py-3">
-          <p className="text-xs text-muted-foreground">Habit Streak</p>
-          <div className="mt-1 flex items-baseline gap-1.5">
-            <AnimatedNumber value={bestStreak} className="text-3xl font-bold" />
-            <span className="text-sm text-muted-foreground">days</span>
+        <Card className="px-5 py-4 border-focus/20 bg-gradient-to-br from-focus/5 to-transparent">
+          <div className="flex items-center gap-2">
+            <span className="flex size-7 items-center justify-center rounded-lg bg-focus/15 text-focus">
+              <Shield className="size-3.5" />
+            </span>
+            <p className="text-sm font-medium text-foreground">Habit Streak</p>
             {streakShields > 0 && (
-              <span className="ml-auto flex items-center gap-1 text-xs text-focus">
-                <Shield className="size-3" /> {streakShields}
+              <span className="ml-auto flex items-center gap-1 rounded-full bg-focus/10 px-2 py-0.5 text-xs font-medium text-focus">
+                🛡 {streakShields}
               </span>
             )}
           </div>
-          <div className="mt-2">
-            <StreakCalendar habit={bestHabit} className="rounded-lg bg-secondary/30 p-2" />
+          <div className="mt-3 flex items-baseline gap-2">
+            <AnimatedNumber value={bestStreak} className="text-4xl font-bold text-focus" />
+            <span className="text-sm text-muted-foreground">day streak</span>
+          </div>
+          <div className="mt-3">
+            <StreakCalendar habit={bestHabit} className="rounded-xl bg-background/60 p-2" />
           </div>
         </Card>
 
-        <Card className="px-4 py-3">
-          <p className="text-xs text-muted-foreground">Tasks Done</p>
-          <div className="mt-1 flex items-baseline gap-1.5">
-            <AnimatedNumber value={pct} className="text-3xl font-bold" suffix="%" />
+        <Card className="px-5 py-4 border-success/20 bg-gradient-to-br from-success/5 to-transparent">
+          <div className="flex items-center gap-2">
+            <span className="flex size-7 items-center justify-center rounded-lg bg-success/15 text-success">
+              <ArrowRight className="size-3.5 rotate-[-45deg]" />
+            </span>
+            <p className="text-sm font-medium text-foreground">Tasks Done</p>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <AnimatedNumber value={pct} className="text-4xl font-bold text-success" suffix="%" />
             <span className="text-sm text-muted-foreground">{done}/{total}</span>
           </div>
           <div className="mt-3">
-            <ProgressBar value={pct} />
+            <ProgressBar value={pct} tone="success" />
           </div>
           {overdue.length > 0 && (
-            <button type="button" onClick={() => setView("tasks")} className="mt-3 flex items-center gap-1 text-xs font-medium text-danger">
-              {overdue.length} overdue <ArrowRight className="size-3" />
+            <button type="button" onClick={() => setView("tasks")} className="mt-3 flex items-center gap-1 text-xs font-medium text-danger hover:underline">
+              ⚠ {overdue.length} overdue — review <ArrowRight className="size-3" />
             </button>
           )}
         </Card>
@@ -137,69 +166,94 @@ export function Dashboard() {
 
       {/* Focus + Goals + Upcoming */}
       <div className="stagger grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Card className="px-4 py-3">
-          <p className="text-xs text-muted-foreground">Focus This Week</p>
-          <p className="mt-1"><AnimatedNumber value={weekFocusHours} className="text-2xl font-bold" suffix=" " /><span className="text-sm font-normal text-muted-foreground">hrs</span></p>
-        </Card>
+        <div className="rounded-2xl border border-border bg-card p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+          <div className="flex items-center gap-2">
+            <span className="size-1.5 rounded-full bg-info" />
+            <p className="text-xs text-muted-foreground">Focus This Week</p>
+          </div>
+          <div className="mt-2">
+            <AnimatedNumber value={weekFocusHours} className="text-3xl font-bold text-info" suffix=" " /><span className="text-sm text-muted-foreground">hrs</span>
+          </div>
+        </div>
 
-        <Card className="px-4 py-3">
-          <p className="text-xs text-muted-foreground">Goals</p>
-          <div className="mt-1 flex items-center gap-3">
-            <AnimatedNumber value={goalAvg} className="text-2xl font-bold" suffix="%" />
-            <CircularProgress value={goalAvg} size={40} stroke={5} tone="var(--success)">
+        <div className="rounded-2xl border border-border bg-card p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+          <div className="flex items-center gap-2">
+            <span className="size-1.5 rounded-full bg-success" />
+            <p className="text-xs text-muted-foreground">Goals</p>
+          </div>
+          <div className="mt-2 flex items-center gap-3">
+            <AnimatedNumber value={goalAvg} className="text-3xl font-bold" suffix="%" />
+            <CircularProgress value={goalAvg} size={44} stroke={5} tone="var(--success)">
               <span className="text-[10px] font-bold">{goalAvg}</span>
             </CircularProgress>
           </div>
-        </Card>
+        </div>
 
-        <Card className="px-4 py-3">
-          <p className="text-xs text-muted-foreground">Upcoming</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums">{events.filter((e) => e.date >= today).length}</p>
-          <button type="button" onClick={() => setView("calendar")} className="mt-1 flex items-center gap-1 text-xs text-primary">
+        <div className="rounded-2xl border border-border bg-card p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+          <div className="flex items-center gap-2">
+            <span className="size-1.5 rounded-full bg-primary" />
+            <p className="text-xs text-muted-foreground">Upcoming</p>
+          </div>
+          <div className="mt-2">
+            <AnimatedNumber value={events.filter((e) => e.date >= today).length} className="text-3xl font-bold" />
+          </div>
+          <button type="button" onClick={() => setView("calendar")} className="mt-2 flex items-center gap-1 text-xs text-primary hover:underline">
             View calendar <ArrowRight className="size-3" />
           </button>
-        </Card>
+        </div>
       </div>
 
       {/* Habits list */}
       {habits.length > 0 && (
-        <Card className="px-4 py-3">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-muted-foreground">Today&apos;s Habits</p>
-            <button type="button" onClick={() => setView("habits")} className="text-xs text-primary">Manage</button>
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-medium text-foreground">Today&apos;s Habits</p>
+            <button type="button" onClick={() => setView("habits")} className="text-xs text-primary hover:underline">Manage</button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {habits.map((h) => (
-              <button
-                key={h.id}
-                type="button"
-                onClick={() => toggleHabit(h.id)}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors",
-                  h.doneToday ? "bg-success/10 text-success line-through" : "bg-secondary text-foreground hover:bg-secondary/80",
-                )}
-              >
-                {h.doneToday ? "✓" : "○"} {h.name}
-                {h.streak > 0 && <span className="text-xs text-muted-foreground">{h.streak}d</span>}
-              </button>
-            ))}
+            {habits.map((h) => {
+              const streakColor = h.streak >= 7 ? "bg-success/15 text-success border-success/20"
+                : h.streak >= 3 ? "bg-focus/15 text-focus border-focus/20"
+                : "bg-secondary border-border"
+              return (
+                <button
+                  key={h.id}
+                  type="button"
+                  onClick={() => toggleHabit(h.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm transition-all duration-200",
+                    h.doneToday
+                      ? "bg-success/15 text-success border-success/20 line-through"
+                      : streakColor,
+                    "hover:scale-[1.03] active:scale-[0.97]",
+                  )}
+                >
+                  <span className="transition-transform duration-200">{h.doneToday ? "✓" : "○"}</span>
+                  <span className="font-medium">{h.name}</span>
+                  {h.streak > 0 && <span className="text-xs opacity-70">{h.streak}d</span>}
+                </button>
+              )
+            })}
           </div>
-        </Card>
+        </div>
       )}
 
       {/* Recent notes */}
       {notes.length > 0 && (
-        <Card className="px-4 py-3">
+        <div className="rounded-2xl border border-border bg-card p-4">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-muted-foreground">Recent Notes</p>
-            <button type="button" onClick={() => setView("notes")} className="text-xs text-primary">Open</button>
+            <p className="text-sm font-medium text-foreground">Recent Notes</p>
+            <button type="button" onClick={() => setView("notes")} className="text-xs text-primary hover:underline">Open</button>
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1.5">
             {notes.slice(0, 3).map((n) => (
-              <p key={n.id} className="truncate text-sm text-muted-foreground">{n.title}</p>
+              <div key={n.id} className="flex items-center gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-secondary/50">
+                <span className="text-primary/60">📄</span>
+                <p className="truncate text-sm text-muted-foreground">{n.title}</p>
+              </div>
             ))}
           </div>
-        </Card>
+        </div>
       )}
 
       <FocusChart />
