@@ -1,6 +1,20 @@
 # 🚀 ProFlow — Release Notes
 
-> ℹ️ **Latest update (v3.2.0):** Simplified UI with spring animations, animated number counters, and cleaner dashboard layout.
+> ℹ️ **Latest update (v3.3.0):** Dashboard visual refresh with colored accents, gradients, habit pill coloring, and progress bar gradients.
+
+---
+
+## ✨ v3.3.0 — Dashboard Visual Refresh
+
+### 🎨 Dashboard
+- **Gradient hero header** with soft tinted background and floating blur orbs
+- **Color-coded stat cards** — purple for Tasks, amber for Habits, blue for Focus
+- **Streak card** with warm amber gradient tint and shield badge
+- **Tasks Done card** with success green gradient tint and gradient progress bar
+- **Habit pills** with streak-based coloring (green/amber/neutral) and scale micro-interactions
+- **Notes list** with hover highlight and file icon
+- **Subtle page-level radial gradient** for depth
+- **Progress bar gradient fill** instead of flat color
 
 ---
 
