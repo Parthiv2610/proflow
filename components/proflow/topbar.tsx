@@ -30,7 +30,7 @@ export function Topbar({ onCapture }: { onCapture: () => void }) {
         type="button"
         onClick={toggleSidebar}
         aria-label={sidebarOpen ? "Close navigation" : "Open navigation"}
-        className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border bg-secondary/50 text-foreground transition-colors hover:bg-muted"
+        className="flex size-8 shrink-0 items-center justify-center rounded-lg text-foreground transition-colors hover:bg-muted"
       >
         <Menu className="size-4" />
       </button>
@@ -67,7 +67,7 @@ export function Topbar({ onCapture }: { onCapture: () => void }) {
         <button
           type="button"
           onClick={() => setView("focus")}
-          className="flex items-center gap-2 rounded-xl border border-focus/40 bg-focus/10 px-3 py-2 text-sm font-semibold text-focus transition-colors hover:bg-focus/15"
+          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-focus transition-colors hover:bg-focus/10"
         >
           <span className={cn("size-2 rounded-full bg-focus", running && "animate-pulse")} />
           <span className="tabular-nums">{formatTime(secondsLeft)}</span>

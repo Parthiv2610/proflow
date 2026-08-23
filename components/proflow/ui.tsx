@@ -4,7 +4,17 @@ import { cn } from "@/lib/utils"
 
 export function Card({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
-    <div className={cn("rounded-2xl border border-border bg-card p-5", className)}>{children}</div>
+    <div
+      className={cn(
+        "rounded-2xl border border-border bg-card p-5",
+        "transition-all duration-200 ease-out",
+        "hover:shadow-[0_4px_24px_-4px_rgba(0,0,0,0.12)] hover:-translate-y-0.5",
+        "active:scale-[0.99] active:shadow-sm",
+        className,
+      )}
+    >
+      {children}
+    </div>
   )
 }
 
@@ -27,8 +37,8 @@ export function ProgressBar({
   return (
     <div className={cn("h-2 w-full overflow-hidden rounded-full bg-muted", className)}>
       <div
-        className={cn("h-full rounded-full transition-all duration-500", tones[tone])}
-        style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+        className={cn("h-full rounded-full transition-all duration-700 ease-out", tones[tone])}
+        style={{ width: `${Math.min(100, Math.max(0, value))}%`, transition: "width 0.7s cubic-bezier(0.34, 1.56, 0.64, 1)" }}
       />
     </div>
   )
@@ -72,6 +82,7 @@ export function CircularProgress({
           strokeDashoffset={offset}
           strokeLinecap="round"
           className="transition-all duration-700"
+          style={{ transition: "stroke-dashoffset 0.7s cubic-bezier(0.34, 1.56, 0.64, 1)" }}
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">{children}</div>

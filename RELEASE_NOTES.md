@@ -1,6 +1,24 @@
 # 🚀 ProFlow — Release Notes
 
-> ℹ️ **Latest update (v3.1.0):** Full-featured checklists, habit reminder notifications, streak calendar, phone widgets, auto-delete completed tasks with 24h restore, and more.
+> ℹ️ **Latest update (v3.2.0):** Simplified UI with spring animations, animated number counters, and cleaner dashboard layout.
+
+---
+
+## ✨ v3.2.0 — UI Simplification & Spring Animations
+
+### 🎨 UI Simplification
+- **Simplified dashboard** — removed sub-tabs, icon badges, and visual clutter. Clean flat layout with quick stats at top.
+- **Simplified sidebar** — flat nav list (no group labels), narrower width, no streak calendar duplication.
+- **Simplified cards** — removed redundant text, reduced padding, cleaner hierarchy.
+- **Simplified topbar** — cleaner hamburger and focus timer buttons.
+
+### 🎬 Spring Animations
+- **View transitions** — spring-physics entrance (scale + fade + slide) on every view switch.
+- **Staggered card entrances** — dashboard cards cascade in with 50ms delays.
+- **Animated number counters** — stats tick up from 0 with ease-out cubic easing.
+- **Card micro-interactions** — hover lifts with shadow, active press scales down.
+- **Progress bar bounce** — spring overshoot on fill animation.
+- **Sidebar nav** — sliding active indicator + staggered item entrance.
 
 ---
 

@@ -92,9 +92,9 @@ function Workspace() {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Animated topbar — slides up when focus mode is active */}
         <div
-          className="overflow-hidden transition-all duration-300 ease-in-out"
+          className="overflow-hidden transition-all duration-200 ease-in-out"
           style={{
-            maxHeight: focusMode ? 0 : 80,
+            maxHeight: focusMode ? 0 : 64,
             opacity: focusMode ? 0 : 1,
           }}
         >
@@ -147,7 +147,7 @@ function AnimatedView({ children }: { children: React.ReactNode }) {
   // internal scrolling (OneNote-style panels). Other views simply overflow as
   // before — main is the scroller either way.
   return (
-    <div className="h-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="h-full view-enter">
       {children}
     </div>
   )
