@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import {
   ArrowRight,
+  CheckSquare,
   Shield,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -35,7 +36,7 @@ function formatDateLong() {
 }
 
 export function Dashboard() {
-  const { tasks, completedTasks, habits, goals, events, notes, setView, toggleHabit, userName, focusLog, recurringLog, streakShields } = useStore()
+  const { tasks, completedTasks, habits, goals, events, notes, checklists, setView, toggleHabit, toggleChecklistItem, userName, focusLog, recurringLog, streakShields } = useStore()
 
   const done = completedTasks.length
   const total = tasks.length + done
@@ -232,6 +233,65 @@ export function Dashboard() {
                   <span className="font-medium">{h.name}</span>
                   {h.streak > 0 && <span className="text-xs opacity-70">{h.streak}d</span>}
                 </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+            {/* Checklists */}
+      {checklists.filter(cl => !cl.archived).length > 0 && (
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-medium text-foreground">Checklists</p>
+            <button type="button" onClick={() => setView("checklists")} className="text-xs text-primary hover:underline">View all</button>
+          </div>
+          <div className="space-y-3">
+            {checklists.filter(cl => !cl.archived).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).slice(0, 3).map(cl => {
+              const total = cl.items.length
+              const done = cl.items.filter(i => i.done).length
+              const pct = total > 0 ? Math.round((done / total) * 100) : 0
+              const previewItems = [
+                ...cl.items.filter(i => i.done).slice(0, 1),
+                ...cl.items.filter(i => !i.done).slice(0, 3),
+              ].slice(0, 4)
+              return (
+                <div key={cl.id} className="rounded-xl border border-border bg-secondary/30 p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-base" style={{ color: cl.color }}>{cl.icon}</span>
+                    <span className="text-sm font-medium text-foreground">{cl.name}</span>
+                    <span className="ml-auto text-xs font-medium text-muted-foreground tabular-nums">{done}/{total}</span>
+                    <div className="w-16">
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-background">
+                        <div className="h-full rounded-full transition-all duration-500" style={{ width: pct + '%', backgroundColor: cl.color }} />
+                      </div>
+                    </div>
+                  </div>
+                  {previewItems.length > 0 && (
+                    <div className="space-y-1 ml-6">
+                      {previewItems.map(item => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => toggleChecklistItem(cl.id, item.id)}
+                          className="flex w-full items-center gap-2 rounded-lg px-1.5 py-0.5 text-left text-xs transition-colors hover:bg-secondary/80"
+                        >
+                          <span className={cn(
+                            'flex size-3.5 shrink-0 items-center justify-center rounded border transition-colors',
+                            item.done
+                              ? 'border-success bg-success text-success-foreground'
+                              : 'border-muted-foreground/50 text-transparent hover:border-primary',
+                          )}>
+                            {item.done && <CheckSquare className="size-3" />}
+                          </span>
+                          <span className={cn('truncate text-muted-foreground', item.done && 'line-through text-muted-foreground/50')}>
+                            {item.title}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>

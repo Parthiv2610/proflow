@@ -778,6 +778,9 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     totalTasksRef.current = totalTasksDone
   }, [totalTasksDone])
+  const completedChecklistCount = useMemo(() => {
+    return checklists.reduce((sum, cl) => sum + cl.items.filter((it) => it.done).length, 0)
+  }, [checklists])
   // Lifetime log of completed recurring-task occurrences (the completion date).
   // Recurring tasks roll straight back to "todo" after a completion — they never
   // sit in the "done" state the derived counter below reads — so every
@@ -785,17 +788,14 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   // counter and the daily/weekly charts. Capped so the log can't grow forever
   // (a weekly repeat is ~52 entries a year).
   const [recurringLog, setRawRecurringLog] = useLocalStorage<string[]>("recurringLog", [])
-  // Lifetime task-completions counter — tasks moved to completedTasks PLUS every
-  // completed recurring occurrence. Note: completions made before this log existed
-  // are not back-filled — their badges were already granted at completion time.
+  // Lifetime task-completions counter — tasks + recurring + completed checklist items.
   useEffect(() => {
-    const done = completedTasks.length
-    const total = done + recurringLog.length
+    const total = completedTasks.length + recurringLog.length + completedChecklistCount
     if (total !== totalTasksRef.current) {
       totalTasksRef.current = total
       setTotalTasksDone(total)
     }
-  }, [completedTasks, recurringLog, setTotalTasksDone])
+  }, [completedTasks, recurringLog, completedChecklistCount, setTotalTasksDone])
   // Lifetime focus-session counter — kept in sync with the focus log.
   const totalFocusRef = useRef(0)
   useEffect(() => {
@@ -2106,11 +2106,14 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
 
   const toggleChecklistItem = useCallback(
     (listId: string, itemId: string) => {
-      setChecklists((prev) => prev.map((cl) => {
-        if (cl.id !== listId) return cl
+      const cl = checklists.find((c) => c.id === listId)
+      const item = cl?.items.find((it) => it.id === itemId)
+      const wasDone = item?.done ?? false
+      setChecklists((prev) => prev.map((c) => {
+        if (c.id !== listId) return c
         return {
-          ...cl,
-          items: cl.items.map((it) => {
+          ...c,
+          items: c.items.map((it) => {
             if (it.id !== itemId) return it
             const done = !it.done
             return {
@@ -2120,8 +2123,13 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
           }),
         }
       }))
+      if (!wasDone) {
+        addXp(5)
+        celebrate()
+        checkTaskMilestones()
+      }
     },
-    [setChecklists],
+    [setChecklists, checklists, addXp, checkTaskMilestones],
   )
 
   const reorderChecklistItems = useCallback(

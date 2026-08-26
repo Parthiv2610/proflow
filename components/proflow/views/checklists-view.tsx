@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import {
   Archive,
+  Check,
   CheckSquare,
   ChevronRight,
   Clock,
@@ -182,6 +183,7 @@ export function ChecklistsView() {
               key={cl.id}
               list={cl}
               onClick={() => setOpenListId(cl.id)}
+              onToggleItem={toggleChecklistItem}
               onContextMenu={(e) => {
                 e.preventDefault()
                 setContextMenu({ listId: cl.id, x: e.clientX, y: e.clientY })
@@ -210,6 +212,7 @@ export function ChecklistsView() {
                   key={cl.id}
                   list={cl}
                   onClick={() => setOpenListId(cl.id)}
+              onToggleItem={toggleChecklistItem}
                   onContextMenu={(e) => {
                     e.preventDefault()
                     setContextMenu({ listId: cl.id, x: e.clientX, y: e.clientY })
@@ -293,10 +296,12 @@ export function ChecklistsView() {
 function ChecklistCard({
   list,
   onClick,
+  onToggleItem,
   onContextMenu,
 }: {
   list: Checklist
   onClick: () => void
+  onToggleItem: (listId: string, itemId: string) => void
   onContextMenu: (e: React.MouseEvent) => void
 }) {
   const total = list.items.length
@@ -346,21 +351,39 @@ function ChecklistCard({
           </div>
         </div>
       )}
-      {list.items.length > 0 && (
-        <div className="mt-3 space-y-1">
-          {list.items.filter((i) => !i.done).slice(0, 3).map((item) => (
-            <div key={item.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="size-3 shrink-0 rounded border border-muted-foreground/40" />
-              <span className="truncate">{item.title}</span>
-            </div>
-          ))}
-          {list.items.filter((i) => !i.done).length > 3 && (
-            <p className="text-xs text-muted-foreground/60">
-              +{list.items.filter((i) => !i.done).length - 3} more
-            </p>
-          )}
-        </div>
-      )}
+      {(() => {
+        const previewItems = [
+          ...list.items.filter(i => i.done).slice(0, 1),
+          ...list.items.filter(i => !i.done).slice(0, 4),
+        ].slice(0, 5)
+        return previewItems.length > 0 ? (
+          <div className="mt-3 space-y-1">
+            {previewItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onToggleItem(list.id, item.id); }}
+                className="flex w-full items-center gap-2 rounded-lg px-1.5 py-0.5 text-left text-xs transition-colors hover:bg-secondary/80"
+              >
+                <span className={cn(
+                  "flex size-3.5 shrink-0 items-center justify-center rounded border transition-colors",
+                  item.done ? "border-success bg-success text-success-foreground" : "border-muted-foreground/50 text-transparent hover:border-primary",
+                )}>
+                  {item.done && <Check className="size-3" />}
+                </span>
+                <span className={cn("truncate text-muted-foreground", item.done && "line-through text-muted-foreground/50")}>
+                  {item.title}
+                </span>
+              </button>
+            ))}
+            {list.items.length > previewItems.length && (
+              <button type="button" onClick={onClick} className="w-full px-1.5 pt-1 text-left text-xs text-muted-foreground/60 hover:text-foreground">
+                +{list.items.length - previewItems.length} more
+              </button>
+            )}
+          </div>
+        ) : null
+      })()}
     </Card>
     </div>
   )

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { isCapacitor } from "./lan-sync"
+import { autoBackupBeforeUpdate } from "./auto-backup"
 
 /** Compare semver strings; true when a > b (handles the "v" prefix too). */
 export function isNewerVersion(a: string, b: string) {
@@ -188,6 +189,7 @@ export function useUpdate() {
 
       setStatus("downloading")
       try {
+        await autoBackupBeforeUpdate();
         await updater.installUpdate({ url: info.downloadUrl })
         setStatus("downloaded")
       } catch (err) {
@@ -217,6 +219,7 @@ export function useUpdate() {
   }, [isCap, info])
 
   const install = useCallback(async () => {
+    await autoBackupBeforeUpdate();
     const api = (window as any).electronAPI
     if (api?.updateInstall) await api.updateInstall()
   }, [])

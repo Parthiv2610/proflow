@@ -19,4 +19,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Data backup export — native save dialog
   saveBackup: (payload) => ipcRenderer.invoke("backup:save", payload),
+  autoSaveBackup: (payload) => ipcRenderer.invoke("backup:autoSave", payload),
 })
