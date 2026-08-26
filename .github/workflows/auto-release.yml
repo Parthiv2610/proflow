@@ -83,25 +83,9 @@ jobs:
 
       # Same config swap build.bat does locally: dev config is committed, export
       # config is written for the build so the static export lands in out/.
-      - name: Build static export (fresh, never stale)
+      - name: Build static export
         shell: bash
-        run: |
-          cp next.config.mjs next.config.mjs.dev
-          cat > next.config.mjs <<'EOF'
-          /** @type {import('next').NextConfig} */
-          const nextConfig = {
-            output: "export",
-            distDir: "out",
-            typescript: { ignoreBuildErrors: true },
-            images: { unoptimized: true },
-            assetPrefix: "./",
-            trailingSlash: true,
-          }
-          export default nextConfig
-          EOF
-          pnpm exec next build
-          cp next.config.mjs.dev next.config.mjs
-          rm -f next.config.mjs.dev
+        run: pnpm exec next build
 
       # Guards against the stale-build blank-screen bug: a corrupt export is the
       # 404 shell and React never hydrates. Fail the build instead of shipping it.
@@ -215,25 +199,9 @@ jobs:
 
       # Same config swap build.bat does locally: dev config is committed, export
       # config is written for the build so the static export lands in out/.
-      - name: Build static export (fresh, never stale)
+      - name: Build static export
         shell: bash
-        run: |
-          cp next.config.mjs next.config.mjs.dev
-          cat > next.config.mjs <<'EOF'
-          /** @type {import('next').NextConfig} */
-          const nextConfig = {
-            output: "export",
-            distDir: "out",
-            typescript: { ignoreBuildErrors: true },
-            images: { unoptimized: true },
-            assetPrefix: "./",
-            trailingSlash: true,
-          }
-          export default nextConfig
-          EOF
-          pnpm exec next build
-          cp next.config.mjs.dev next.config.mjs
-          rm -f next.config.mjs.dev
+        run: pnpm exec next build
 
       # Hydration guard — same protection as the desktop installer workflow.
       - name: Hydration guard (fail if export is a dead shell)
