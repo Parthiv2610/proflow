@@ -1,6 +1,6 @@
 {
   "name": "proflow",
-  "version": "3.5.1",
+  "version": "3.5.2",
   "private": true,
   "description": "ProFlow — All-in-One Productivity Workspace",
   "main": "electron/main.js",

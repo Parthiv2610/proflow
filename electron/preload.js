@@ -20,4 +20,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Data backup export — native save dialog
   saveBackup: (payload) => ipcRenderer.invoke("backup:save", payload),
   autoSaveBackup: (payload) => ipcRenderer.invoke("backup:autoSave", payload),
+
+  // Crash diagnostics
+  showCrashLog: () => ipcRenderer.invoke("show-crash-log"),
+  getCrashLogPath: () => ipcRenderer.invoke("get-crash-log-path"),
 })

@@ -1,67 +1,78 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog } = require("electron")
-const path = require("path")
-const fs = require("fs")
-const { autoUpdater } = require("electron-updater")
+const { app, BrowserWindow, Menu, ipcMain, dialog } = require("electron");
+const path = require("path");
+const fs = require("fs");
 
-const isDev = !app.isPackaged
+let autoUpdater = null;
+try {
+  autoUpdater = require("electron-updater").autoUpdater;
+} catch (err) {
+  console.error("[ProFlow] electron-updater not available:", err.message);
+}
+
+const isDev = !app.isPackaged;
+const logPath = path.join(app.getPath("userData"), "crash.log");
+
+function log(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  try { fs.appendFileSync(logPath, line); } catch {}
+  console.log(line);
+}
 
 // Allow the timer-end chime to play without requiring a user gesture.
-app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required")
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 // ---------------------------------------------------------------------------
-// In-place auto-update (electron-updater — GitHub Releases feed)
+// Auto-update (electron-updater — GitHub Releases feed)
 // ---------------------------------------------------------------------------
 
-/** Read the current app version from package.json */
 function getAppVersion() {
-  const pkgPath = path.join(__dirname, "..", "package.json")
   try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
-    return pkg.version || "0.0.0"
+    const pkgPath = path.join(__dirname, "..", "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+    return pkg.version || "0.0.0";
   } catch {
-    return "0.0.0"
+    return "0.0.0";
   }
 }
 
-let updateState = { status: "idle" }
+let updateState = { status: "idle" };
 
-/** Forward an auto-updater event to the renderer (Settings → About & Updates). */
 function sendUpdateStatus(payload) {
-  updateState = { ...updateState, ...payload }
+  updateState = { ...updateState, ...payload };
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("update:status", updateState)
+    mainWindow.webContents.send("update:status", updateState);
   }
 }
 
 function wireAutoUpdater() {
-  // Let the user choose when to download/restart — the renderer drives the flow.
-  autoUpdater.autoDownload = false
-  autoUpdater.autoInstallOnAppQuit = true
+  if (!autoUpdater) {
+    log("autoUpdater not available, skipping");
+    return;
+  }
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on("checking-for-update", () => sendUpdateStatus({ status: "checking" }))
+  autoUpdater.on("checking-for-update", () => sendUpdateStatus({ status: "checking" }));
   autoUpdater.on("update-available", (info) =>
-    sendUpdateStatus({
-      status: "available",
-      version: info && info.version,
-      releaseNotes: info && info.releaseNotes,
-    }),
-  )
-  autoUpdater.on("update-not-available", () => sendUpdateStatus({ status: "uptodate" }))
+    sendUpdateStatus({ status: "available", version: info && info.version, releaseNotes: info && info.releaseNotes })
+  );
+  autoUpdater.on("update-not-available", () => sendUpdateStatus({ status: "uptodate" }));
   autoUpdater.on("download-progress", (p) =>
-    sendUpdateStatus({ status: "downloading", percent: Math.round((p && p.percent) || 0) }),
-  )
+    sendUpdateStatus({ status: "downloading", percent: Math.round((p && p.percent) || 0) })
+  );
   autoUpdater.on("update-downloaded", (info) =>
-    sendUpdateStatus({ status: "downloaded", version: info && info.version }),
-  )
-  autoUpdater.on("error", (err) =>
-    sendUpdateStatus({ status: "error", message: String((err && err.message) || err) }),
-  )
+    sendUpdateStatus({ status: "downloaded", version: info && info.version })
+  );
+  autoUpdater.on("error", (err) => {
+    const msg = String((err && err.message) || err);
+    log("autoUpdater error: " + msg);
+    sendUpdateStatus({ status: "error", message: msg });
+  });
 
   if (!isDev) {
-    // Check for updates shortly after launch (production only).
     setTimeout(() => {
-      autoUpdater.checkForUpdates().catch(() => {})
-    }, 4000)
+      autoUpdater.checkForUpdates().catch((e) => log("checkForUpdates failed: " + e));
+    }, 4000);
   }
 }
 
@@ -69,9 +80,11 @@ function wireAutoUpdater() {
 // Create the main window
 // ---------------------------------------------------------------------------
 
-let mainWindow = null
+let mainWindow = null;
 
 function createWindow() {
+  log("Creating window, isDev=" + isDev + ", __dirname=" + __dirname);
+
   const win = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -84,9 +97,9 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-  })
+  });
 
-  // Build a clean application menu (macOS gets the app menu, Windows gets a minimal one)
+  // Build application menu
   const menuTemplate = [
     {
       label: "File",
@@ -123,9 +136,8 @@ function createWindow() {
         { role: "togglefullscreen" },
       ],
     },
-  ]
+  ];
 
-  // On macOS, add the app name menu
   if (process.platform === "darwin") {
     menuTemplate.unshift({
       label: app.getName(),
@@ -138,69 +150,84 @@ function createWindow() {
         { type: "separator" },
         { role: "quit" },
       ],
-    })
+    });
   }
 
-  const menu = Menu.buildFromTemplate(menuTemplate)
-  Menu.setApplicationMenu(menu)
+  win.setMenu(Menu.buildFromTemplate(menuTemplate));
+
+  // Log errors that prevent the page from loading
+  win.webContents.on("did-fail-load", (event, errorCode, errorDescription, validatedURL) => {
+    log("PAGE FAILED TO LOAD: code=" + errorCode + " desc=" + errorDescription + " url=" + validatedURL);
+  });
+
+  // Log console errors from the renderer
+  win.webContents.on("console-message", (event, level, message) => {
+    if (level >= 2) { // 0=info, 1=warn, 2=error
+      log("RENDERER ERROR: " + message);
+    }
+  });
 
   if (isDev) {
-    // In development, load from the Next.js dev server
-    win.loadURL("http://localhost:3000")
-    win.webContents.openDevTools()
+    log("Loading dev URL");
+    win.loadURL("http://localhost:3000");
+    win.webContents.openDevTools();
   } else {
-    // In production, load the exported static build
-    win.loadFile(path.join(__dirname, "..", "out", "index.html"))
+    const htmlPath = path.join(__dirname, "..", "out", "index.html");
+    log("Loading file: " + htmlPath);
+    log("File exists: " + fs.existsSync(htmlPath));
+    log("File size: " + (fs.existsSync(htmlPath) ? fs.statSync(htmlPath).size : "N/A"));
+
+    // Try loadFile first, fall back to loadURL with file:// protocol
+    try {
+      win.loadFile(htmlPath);
+    } catch (err) {
+      log("loadFile failed: " + err.message);
+      try {
+        const fileUrl = "file:///" + htmlPath.replace(/\\/g, "/");
+        log("Trying loadURL: " + fileUrl);
+        win.loadURL(fileUrl);
+      } catch (err2) {
+        log("loadURL also failed: " + err2.message);
+      }
+    }
   }
 
-  mainWindow = win
+  mainWindow = win;
   win.on("closed", () => {
-    if (mainWindow === win) mainWindow = null
-  })
+    if (mainWindow === win) mainWindow = null;
+  });
 
-  return win
+  return win;
 }
 
 // ---------------------------------------------------------------------------
 // IPC handlers
 // ---------------------------------------------------------------------------
 
-ipcMain.handle("get-app-version", () => {
-  return getAppVersion()
-})
-
-// Return the cached update state — the launch-time auto-check may have finished
-// before the Settings view mounted, so the renderer asks for it on subscribe.
-ipcMain.handle("update:get-status", () => updateState)
-
-// In-place auto-update — the installer is downloaded and applied silently over
-// the current install (no uninstall, no reinstall, data preserved).
+ipcMain.handle("get-app-version", () => getAppVersion());
+ipcMain.handle("update:get-status", () => updateState);
 ipcMain.handle("update:check", async () => {
-  if (isDev) return { status: "dev" }
+  if (isDev) return { status: "dev" };
   try {
-    autoUpdater.checkForUpdates()
-    return { status: "checking" }
+    if (autoUpdater) autoUpdater.checkForUpdates();
+    return { status: "checking" };
   } catch (err) {
-    return { status: "error", message: String((err && err.message) || err) }
+    return { status: "error", message: String((err && err.message) || err) };
   }
-})
-
+});
 ipcMain.handle("update:download", async () => {
   try {
-    autoUpdater.downloadUpdate()
-    return { status: "downloading" }
+    if (autoUpdater) autoUpdater.downloadUpdate();
+    return { status: "downloading" };
   } catch (err) {
-    return { status: "error", message: String((err && err.message) || err) }
+    return { status: "error", message: String((err && err.message) || err) };
   }
-})
-
+});
 ipcMain.handle("update:install", async () => {
-  // Apply the downloaded update and restart into it.
-  autoUpdater.quitAndInstall(false, true)
-  return { status: "installing" }
-})
+  if (autoUpdater) autoUpdater.quitAndInstall(false, true);
+  return { status: "installing" };
+});
 
-// Data backup - auto-save to Downloads before updates
 ipcMain.handle("backup:autoSave", async (event, payload) => {
   try {
     const { content } = payload || {};
@@ -210,50 +237,92 @@ ipcMain.handle("backup:autoSave", async (event, payload) => {
     fs.writeFileSync(filePath, content, "utf-8");
     return { path: filePath };
   } catch (err) {
-    return { error: String(err && err.message || err) };
+    return { error: String((err && err.message) || err) };
   }
 });
 
-// Data backup export — native save dialog so the user chooses where the JSON
-// lands (the renderer's browser-style anchor download can be unreliable).
 ipcMain.handle("backup:save", async (event, payload) => {
   try {
-    const { fileName, content } = payload || {}
+    const { fileName, content } = payload || {};
     if (!fileName || typeof content !== "string") {
-      return { error: "fileName and content are required" }
+      return { error: "fileName and content are required" };
     }
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = BrowserWindow.fromWebContents(event.sender);
     const { canceled, filePath } = await dialog.showSaveDialog(win, {
       title: "Export ProFlow backup",
       defaultPath: path.join(app.getPath("downloads"), fileName),
       filters: [{ name: "JSON", extensions: ["json"] }],
-    })
-    if (canceled || !filePath) return { canceled: true }
-    fs.writeFileSync(filePath, content, "utf-8")
-    return { canceled: false, path: filePath }
+    });
+    if (canceled || !filePath) return { canceled: true };
+    fs.writeFileSync(filePath, content, "utf-8");
+    return { canceled: false, path: filePath };
   } catch (err) {
-    return { error: String((err && err.message) || err) }
+    return { error: String((err && err.message) || err) };
   }
-})
+});
+
+ipcMain.handle("get-crash-log", () => {
+  try {
+    return fs.readFileSync(logPath, "utf-8");
+  } catch {
+    return "No log file found";
+  }
+});
 
 // ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(async () => {
-  createWindow()
-
-  // Wire electron-updater events → renderer and check for updates on launch
-  // (production only, after a short delay so the app opens instantly).
-  wireAutoUpdater()
-})
+  log("App ready, version=" + getAppVersion());
+  createWindow();
+  wireAutoUpdater();
+});
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit()
-})
+  if (process.platform !== "darwin") app.quit();
+});
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow()
+    createWindow();
   }
-})
+});
+
+app.on("render-process-gone", (event, webContents, details) => {
+  log("RENDER PROCESS GONE: " + JSON.stringify(details));
+});
+
+app.on("child-process-gone", (event, details) => {
+  log("CHILD PROCESS GONE: " + JSON.stringify(details));
+});
+
+process.on("uncaughtException", (err) => {
+  log("UNCAUGHT EXCEPTION: " + err.stack || err);
+});
+
+// Expose crash log path so the renderer can show it
+ipcMain.handle("get-crash-log-path", () => logPath);
+
+ipcMain.handle("show-crash-log", async () => {
+  try {
+    const content = fs.readFileSync(logPath, "utf-8");
+    const win = BrowserWindow.getFocusedWindow() || mainWindow;
+    if (win) {
+      await dialog.showMessageBox(win, {
+        type: "info",
+        title: "ProFlow Crash Log",
+        message: "Crash log contents (copy and send to developer):",
+        detail: content.slice(-4000),
+        buttons: ["OK"],
+      });
+    }
+  } catch {
+    await dialog.showMessageBox({
+      type: "info",
+      title: "ProFlow Crash Log",
+      message: "No crash log found.",
+      buttons: ["OK"],
+    });
+  }
+});
