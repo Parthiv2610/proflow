@@ -16,6 +16,7 @@ import { SettingsView } from "@/components/proflow/views/settings-view"
 import { TasksView } from "@/components/proflow/views/tasks-view"
 import { ChecklistsView } from "@/components/proflow/views/checklists-view"
 import { ProFlowProvider, useStore, SIDEBAR_DRAWER_MAX } from "@/components/proflow/store"
+import { hasStoredData } from "@/lib/auto-backup"
 import { Sidebar } from "@/components/proflow/sidebar"
 import { Topbar } from "@/components/proflow/topbar"
 import { BottomTabs } from "@/components/proflow/bottom-tabs"
@@ -28,6 +29,13 @@ function Workspace() {
   const [captureOpen, setCaptureOpen] = useState(false)
   const [captureProject, setCaptureProject] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [showRestorePrompt, setShowRestorePrompt] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const t = setTimeout(() => { if (!hasStoredData()) setShowRestorePrompt(true) }, 1500)
+    return () => clearTimeout(t)
+  }, [])
 
   // Plain "Add task" opens the dialog fresh; "New project" pre-fills the
   // project name (from the tasks search box) so filling a project is faster.
@@ -142,6 +150,18 @@ function Workspace() {
       <WelcomeTour />
       {/* Confetti + badge popup when an achievement milestone is crossed */}
       <MilestonePopup />
+      {showRestorePrompt && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-background p-6 shadow-2xl">
+            <h3 className="text-base font-semibold text-foreground mb-1">Welcome back!</h3>
+            <p className="text-sm text-muted-foreground mb-4">It looks like your data needs to be restored. A backup may have been saved before your last update. Import it from Settings, or start fresh.</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setShowRestorePrompt(false)} className="flex-1 rounded-xl border border-border bg-secondary px-4 py-2 text-sm font-medium text-foreground hover:bg-secondary/80">Start fresh</button>
+              <button type="button" onClick={() => setShowRestorePrompt(false)} className="flex-1 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">Go to Settings</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

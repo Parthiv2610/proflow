@@ -201,6 +201,19 @@ ipcMain.handle("update:install", async () => {
 })
 
 // Data backup export — native save dialog so the user chooses where the JSON
+ipcMain.handle("backup:autoSave", async (event, payload) => {
+  try {
+    const { content } = payload || {};
+    if (!content) return { error: "content is required" };
+    const fileName = `proflow-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const filePath = require("path").join(app.getPath("downloads"), fileName);
+    fs.writeFileSync(filePath, content, "utf-8");
+    return { path: filePath };
+  } catch (err) {
+    return { error: String(err && err.message || err) };
+  }
+});
+
 // lands (the renderer's browser-style anchor download can be unreliable).
 ipcMain.handle("backup:save", async (event, payload) => {
   try {
