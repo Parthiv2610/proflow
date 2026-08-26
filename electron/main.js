@@ -4,19 +4,20 @@ const fs = require("fs");
 
 const isDev = !app.isPackaged;
 
-// Crash log — written to userData so it persists across restarts
+// ---------------------------------------------------------------------------
+// Logging
+// ---------------------------------------------------------------------------
 const logPath = path.join(app.getPath("userData"), "crash.log");
 function log(msg) {
   const line = "[" + new Date().toISOString() + "] " + msg + "\n";
-  try { fs.appendFileSync(logPath, line); } catch (_) { /* userData may not exist yet */ }
+  try { fs.appendFileSync(logPath, line); } catch (_) {}
   if (isDev) console.log(line.trimEnd());
 }
 
-// Clear old log on fresh start
 try { fs.writeFileSync(logPath, "=== ProFlow started " + new Date().toISOString() + " ===\n"); } catch (_) {}
 
 // ---------------------------------------------------------------------------
-// Try to load electron-updater (may not be installed in packaged app)
+// Auto-updater (safe — does nothing if module missing)
 // ---------------------------------------------------------------------------
 let autoUpdater = null;
 try {
@@ -26,7 +27,6 @@ try {
   log("electron-updater NOT available: " + err.message);
 }
 
-// Allow audio playback without gesture (focus timer chime)
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 // ---------------------------------------------------------------------------
@@ -39,9 +39,10 @@ function getAppVersion() {
 }
 
 // ---------------------------------------------------------------------------
-// Auto-updater
+// Update state
 // ---------------------------------------------------------------------------
 let updateState = { status: "idle" };
+let mainWindow = null;
 
 function sendUpdateStatus(payload) {
   updateState = { ...updateState, ...payload };
@@ -77,9 +78,66 @@ function wireAutoUpdater() {
 }
 
 // ---------------------------------------------------------------------------
+// Resolve the built index.html
+// ---------------------------------------------------------------------------
+function resolveIndexHtml() {
+  if (isDev) {
+    return path.join(__dirname, "..", "out", "index.html");
+  }
+
+  // Production: out/ is an extraResource copied OUTSIDE the asar archive
+  // process.resourcesPath = <install-dir>/resources/
+  const candidates = [
+    path.join(process.resourcesPath, "out", "index.html"),
+    path.join(__dirname, "..", "out", "index.html"),          // fallback: inside asar
+    path.join(process.resourcesPath, "app", "out", "index.html"), // old layout
+    path.join(path.dirname(process.execPath), "resources", "out", "index.html"), // ultimate fallback
+  ];
+
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      log("Found index.html at: " + p);
+      return p;
+    }
+    log("Tried (missing): " + p);
+  }
+
+  // Return the primary path even if missing — loadFile will show an error
+  log("WARNING: No index.html found in any location!");
+  log("  execPath:      " + process.execPath);
+  log("  resourcesPath: " + process.resourcesPath);
+  log("  __dirname:     " + __dirname);
+
+  // Dump directory listing to help debug
+  for (const dir of candidates.map(path.dirname)) {
+    try {
+      const files = fs.readdirSync(dir);
+      log("  contents of " + dir + ": " + JSON.stringify(files.slice(0, 20)));
+    } catch (e) {
+      log("  cannot read dir " + dir + ": " + e.message);
+    }
+  }
+
+  return candidates[0];
+}
+
+// ---------------------------------------------------------------------------
 // Window
 // ---------------------------------------------------------------------------
-let mainWindow = null;
+function showCrashLogDialog() {
+  let content = "No crash log found.";
+  try { content = fs.readFileSync(logPath, "utf-8"); } catch (_) {}
+  const win = BrowserWindow.getFocusedWindow() || mainWindow;
+  if (win) {
+    dialog.showMessageBox(win, {
+      type: "info",
+      title: "ProFlow — Crash Log",
+      message: "Crash log (copy & paste to developer):",
+      detail: content.slice(-4000),
+      buttons: ["OK"],
+    });
+  }
+}
 
 function showErrorDialog(msg, detail) {
   try {
@@ -119,7 +177,8 @@ function createWindow() {
       { role: "reload" }, { role: "forceReload" }, { role: "toggleDevTools" },
       { type: "separator" },
       { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" },
-      { type: "separator" }, { role: "togglefullscreen" }
+      { type: "separator" },
+      { role: "togglefullscreen" }
     ]},
     { label: "Help", submenu: [
       { label: "Show Crash Log", click: () => showCrashLogDialog() }
@@ -147,54 +206,13 @@ function createWindow() {
   });
 
   // Load the app
-  if (isDev) {
-    log("Loading dev URL");
-    win.loadURL("http://localhost:3000");
-    win.webContents.openDevTools();
-  } else {
-    // Production: load the static export
-    const htmlPath = path.join(__dirname, "..", "out", "index.html");
-    log("__dirname=" + __dirname);
-    log("htmlPath=" + htmlPath);
-    log("exists=" + fs.existsSync(htmlPath));
-    if (fs.existsSync(htmlPath)) {
-      log("size=" + fs.statSync(htmlPath).size);
-    } else {
-      // List what IS in the directory to help debug
-      const dir = path.join(__dirname, "..");
-      try {
-        const files = fs.readdirSync(dir);
-        log("Contents of " + dir + ": " + JSON.stringify(files));
-      } catch (e) {
-        log("Cannot read parent dir: " + e.message);
-      }
-      showErrorDialog(
-        "ProFlow cannot start because index.html is missing.",
-        "Expected at: " + htmlPath + "\n\nThis usually means the app was not packaged correctly. " +
-        "Please reinstall ProFlow or download the latest version from GitHub."
-      );
-    }
-    win.loadFile(htmlPath);
-  }
+  const htmlPath = resolveIndexHtml();
+  log("Loading: " + htmlPath);
+  win.loadFile(htmlPath);
 
   mainWindow = win;
   win.on("closed", () => { if (mainWindow === win) mainWindow = null; });
   return win;
-}
-
-function showCrashLogDialog() {
-  let content = "No crash log found.";
-  try { content = fs.readFileSync(logPath, "utf-8"); } catch (_) {}
-  const win = BrowserWindow.getFocusedWindow() || mainWindow;
-  if (win) {
-    dialog.showMessageBox(win, {
-      type: "info",
-      title: "ProFlow — Crash Log",
-      message: "Crash log (copy & paste to developer):",
-      detail: content.slice(-4000),
-      buttons: ["OK"],
-    });
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -224,7 +242,7 @@ ipcMain.handle("backup:autoSave", async (event, payload) => {
     const { content } = payload || {};
     if (!content) return { error: "content is required" };
     const fileName = "proflow-backup-" + new Date().toISOString().slice(0, 10) + ".json";
-    const filePath = require("path").join(app.getPath("downloads"), fileName);
+    const filePath = path.join(app.getPath("downloads"), fileName);
     fs.writeFileSync(filePath, content, "utf-8");
     return { path: filePath };
   } catch (err) { return { error: err.message }; }
@@ -237,7 +255,7 @@ ipcMain.handle("backup:save", async (event, payload) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const { canceled, filePath } = await dialog.showSaveDialog(win, {
       title: "Export ProFlow backup",
-      defaultPath: require("path").join(app.getPath("downloads"), fileName),
+      defaultPath: path.join(app.getPath("downloads"), fileName),
       filters: [{ name: "JSON", extensions: ["json"] }],
     });
     if (canceled || !filePath) return { canceled: true };
@@ -251,6 +269,9 @@ ipcMain.handle("backup:save", async (event, payload) => {
 // ---------------------------------------------------------------------------
 app.whenReady().then(() => {
   log("App ready v" + getAppVersion() + ", platform=" + process.platform);
+  log("isDev=" + isDev);
+  log("execPath=" + process.execPath);
+  log("resourcesPath=" + (process.resourcesPath || "N/A"));
   createWindow();
   wireAutoUpdater();
 });
