@@ -37,11 +37,13 @@ export function HabitsView() {
     streakShields,
     buyShield,
     buyHabitShield,
+    undoLastShieldUse,
   } = useStore()
   const doneToday = habits.filter((h) => h.doneToday).length
   const [justBought, setJustBought] = useState(false)
   const [notEnough, setNotEnough] = useState(false)
   const [miniBought, setMiniBought] = useState<string | null>(null)
+  const [justUndone, setJustUndone] = useState(false)
 
   const handleBuyMini = (id: string) => {
     if (buyHabitShield(id)) {
@@ -62,6 +64,13 @@ export function HabitsView() {
       setJustBought(false)
       setNotEnough(true)
       setTimeout(() => setNotEnough(false), 2500)
+    }
+  }
+
+  const handleUndo = () => {
+    if (undoLastShieldUse()) {
+      setJustUndone(true)
+      setTimeout(() => setJustUndone(false), 2500)
     }
   }
 
@@ -175,18 +184,25 @@ export function HabitsView() {
             <Shield className="size-4" />
             {streakShields >= MAX_SHIELDS ? "Max held" : `Buy · ${SHIELD_PRICE} XP`}
           </Button>
+          {streakShields > 0 && (
+            <Button variant="ghost" onClick={handleUndo} className="text-muted-foreground hover:text-foreground">
+              ↩ Undo
+            </Button>
+          )}
         </div>
         <p
           className={cn(
             "w-full text-xs font-medium transition-opacity",
-            justBought ? "text-success" : notEnough ? "text-danger" : "opacity-0",
+            justBought ? "text-success" : justUndone ? "text-primary" : notEnough ? "text-danger" : "opacity-0",
           )}
         >
           {justBought
             ? "Shield purchased — your streak is protected!"
-            : notEnough
-              ? `Not enough XP yet — you need ${SHIELD_PRICE} XP for a shield.`
-              : " "}
+            : justUndone
+              ? "Shield use undone — shield returned to pool"
+              : notEnough
+                ? `Not enough XP yet — you need ${SHIELD_PRICE} XP for a shield.`
+                : " "}
         </p>
       </Card>
 

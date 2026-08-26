@@ -97,6 +97,10 @@ export type Habit = {
   // revoked through the ledger, and a later re-check legitimately earns again).
   // Check + uncheck nets exactly 0 XP, so this can't be farmed.
   rewardedDay: string
+  // Actual dates (YYYY-MM-DD) the user completed this habit. Used by the
+  // streak calendar to show exactly which days were done, instead of guessing
+  // from the streak count (which breaks when the schedule has gaps).
+  completedDays: string[];
   // Reminder settings: optional fields for scheduling daily reminders
   reminderEnabled?: boolean
   reminderTime?: string // "HH:mm" format, e.g. "09:00"
@@ -199,15 +203,40 @@ export const ACCENTS: Record<string, { primary: string; fg: string; accent: stri
     fg: "oklch(0.99 0 0)",
     accent: "oklch(0.3 0.04 255)",
   },
+  Indigo: {
+    primary: "oklch(0.55 0.2 270)",
+    fg: "oklch(0.99 0 0)",
+    accent: "oklch(0.28 0.05 270)",
+  },
   Green: {
     primary: "oklch(0.68 0.16 155)",
     fg: "oklch(0.2 0.02 155)",
     accent: "oklch(0.3 0.05 155)",
   },
+  Teal: {
+    primary: "oklch(0.65 0.15 175)",
+    fg: "oklch(0.2 0.02 175)",
+    accent: "oklch(0.3 0.05 175)",
+  },
+  Cyan: {
+    primary: "oklch(0.68 0.14 205)",
+    fg: "oklch(0.2 0.02 205)",
+    accent: "oklch(0.3 0.05 205)",
+  },
+  Orange: {
+    primary: "oklch(0.72 0.18 55)",
+    fg: "oklch(0.2 0.04 55)",
+    accent: "oklch(0.35 0.08 55)",
+  },
   Amber: {
     primary: "oklch(0.76 0.15 70)",
     fg: "oklch(0.2 0.02 70)",
     accent: "oklch(0.35 0.06 70)",
+  },
+  Rose: {
+    primary: "oklch(0.65 0.2 10)",
+    fg: "oklch(0.99 0 0)",
+    accent: "oklch(0.3 0.06 10)",
   },
 }
 
@@ -315,6 +344,7 @@ type Store = {
   streakShields: number
   buyShield: () => boolean
   buyHabitShield: (id: string) => boolean
+  undoLastShieldUse: () => boolean
 
   // achievements & milestones
   achievements: Record<string, string>
@@ -889,6 +919,56 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     [habits, setXp, setXpEvents, setRawHabits],
   )
 
+  // Undo the last shield usage: restore the shield to the shared pool and
+  // remove the consumption event. The streak is then recalculated from the
+  // actual completedDays — if the shield was covering a missed day, the
+  // streak naturally breaks at that point.
+  const undoLastShieldUse = useCallback(() => {
+    const events = [...shieldEventsRef.current]
+    // Find the most recent shield consumption (use: prefix).
+    let idx = -1
+    for (let i = events.length - 1; i >= 0; i--) {
+      if (events[i].id.startsWith("use:")) { idx = i; break; }
+    }
+    if (idx < 0) return false // nothing to undo
+    const removed = events[idx]
+    events.splice(idx, 1)
+    shieldEventsRef.current = events
+    setShieldEvents(events)
+    // Restore one shield to the shared pool.
+    shieldsRef.current += 1
+    setStreakShields(shieldsRef.current)
+    // Extract the habit id and date from the event id (use:YYYY-MM-DD:h_id).
+    const parts = removed.id.split(":")
+    const missedDate = parts[1] // YYYY-MM-DD
+    const habitId = parts.slice(2).join(":") // in case id contains ':'
+    // Recalculate that habit's streak from actual completion data.
+    const habit = habits.find((h) => h.id === habitId)
+    if (habit) {
+      const today = todayKey()
+      const completedSet = new Set(habit.completedDays)
+      if (habit.doneToday) completedSet.add(today)
+      let streak = habit.doneToday ? 1 : 0
+      const cursor = new Date(`${missedDate}T00:00:00`)
+      cursor.setDate(cursor.getDate() - 1)
+      let safety = 400
+      while (safety-- > 0) {
+        const key = dateKey(cursor)
+        const dayIdx = (cursor.getDay() + 6) % 7
+        if (habit.week[dayIdx]) {
+          if (completedSet.has(key)) streak++
+          else break // missed a scheduled day → streak broken here
+        }
+        cursor.setDate(cursor.getDate() - 1)
+      }
+      setRawHabits((prev) =>
+        prev.map((h) => h.id === habitId ? { ...h, streak: Math.max(0, streak) } : h),
+      )
+    }
+    showNotification("ProFlow", "↩️ Shield use undone — shield returned")
+    return true
+  }, [shieldEventsRef, habits, setShieldEvents, setStreakShields, setRawHabits])
+
   // Projects derived from real task data — no hardcoded demo projects. A task
   // can carry any project name; the sidebar/tasks view only ever shows projects
   // the user has actually used.
@@ -1040,7 +1120,16 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       showNotification("ProFlow", `🛡️ ${bits.join(" + ")} used to keep your streaks alive!`)
       celebrate()
     }
-    setHabits(next)
+    // Prune completedDays older than 90 days to keep localStorage lean.
+    const cutoffDate = new Date()
+    cutoffDate.setDate(cutoffDate.getDate() - 90)
+    const cutoffKey = dateKey(cutoffDate)
+    const pruned = next.map((h) =>
+      h.completedDays && h.completedDays.length > 90
+        ? { ...h, completedDays: h.completedDays.filter((d) => d >= cutoffKey) }
+        : h,
+    )
+    setHabits(pruned)
     setLastHabitCheck(today)
   }, [lastHabitCheck, shieldsRef, habits, setHabits, setShieldEvents, setStreakShields, setLastHabitCheck])
 
@@ -1232,7 +1321,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [weeklyFocusGoal, setRawWeeklyFocusGoal] = useLocalStorage("weeklyFocusGoal", DEFAULT_WEEKLY_FOCUS_GOAL)
   const setWeeklyFocusGoal = setRawWeeklyFocusGoal
 
-  // timer
+  // timer — timestamp-based so it stays accurate when backgrounded/tab-hidden
   const [mode, setMode] = useState<TimerMode>("focus")
   const [totalSeconds, setTotalSeconds] = useState(DEFAULT_FOCUS_MINUTES * 60)
   const [secondsLeft, setSecondsLeft] = useState(DEFAULT_FOCUS_MINUTES * 60)
@@ -1241,21 +1330,121 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const totalPomodoros = 4
   const sessionLabel = "Focus"
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const endTimeRef = useRef<number | null>(null) // absolute ms when timer ends
+  const runningRef = useRef(false)
+  runningRef.current = running
+
+  // Persist / restore timer state across background/sleep/refresh.
+  const persistTimerState = useCallback((endTime: number | null, secLeft: number, m: TimerMode, p: number, total: number) => {
+    try {
+      const data = { endTime, secondsLeft: secLeft, mode: m, pomodoro: p, total };
+      localStorage.setItem("proflow-focus-timer", JSON.stringify(data));
+    } catch { /* noop */ }
+  }, []);
+
+  const clearPersistedTimer = useCallback(() => {
+    try { localStorage.removeItem("proflow-focus-timer"); } catch { /* noop */ }
+  }, []);
+
+  // Sync remaining time from the stored end timestamp.
+  const syncFromEndTime = useCallback((m: TimerMode, p: number, total: number, modeOverride?: TimerMode) => {
+    if (!endTimeRef.current) return;
+    const now = Date.now();
+    const remainingMs = endTimeRef.current - now;
+    if (remainingMs <= 0) {
+      // Timer finished while we were away.
+      setSecondsLeft(0);
+    } else {
+      setSecondsLeft(Math.ceil(remainingMs / 1000));
+    }
+  }, []);
 
   useEffect(() => {
     if (running) {
+      // Record the absolute end time so the timer survives backgrounding.
+      if (!endTimeRef.current) {
+        endTimeRef.current = Date.now() + secondsLeft * 1000;
+      }
+      persistTimerState(endTimeRef.current, secondsLeft, mode, pomodoro, totalSeconds);
       intervalRef.current = setInterval(() => {
-        setSecondsLeft((s) => (s > 0 ? s - 1 : 0))
-      }, 1000)
+        if (!endTimeRef.current) return;
+        const now = Date.now();
+        const remainingMs = endTimeRef.current - now;
+        if (remainingMs <= 0) {
+          setSecondsLeft(0);
+        } else {
+          setSecondsLeft(Math.ceil(remainingMs / 1000));
+        }
+      }, 500); // 500ms for smoother countdown
+    } else {
+      endTimeRef.current = null;
     }
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
+      if (intervalRef.current) clearInterval(intervalRef.current);
     }
-  }, [running])
+  }, [running, mode, pomodoro, totalSeconds]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const startTimer = useCallback(() => setRunning(true), [])
-  const pauseTimer = useCallback(() => setRunning(false), [])
-  const toggleTimer = useCallback(() => setRunning((r) => !r), [])
+  // Sync timer when app/tab returns to foreground — handles background throttle.
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible" && runningRef.current && endTimeRef.current) {
+        syncFromEndTime(mode, pomodoro, totalSeconds);
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onVis);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onVis);
+    };
+  }, [mode, pomodoro, totalSeconds, syncFromEndTime]);
+
+  // Restore timer state on mount (if app was backgrounded mid-session).
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("proflow-focus-timer");
+      if (raw) {
+        const saved = JSON.parse(raw) as { endTime: number; secondsLeft: number; mode: string; pomodoro: number; total: number };
+        if (saved.endTime && Date.now() < saved.endTime) {
+          // Timer was still running when the app was backgrounded — resume it.
+          endTimeRef.current = saved.endTime;
+          setMode(saved.mode as TimerMode);
+          setPomodoro(saved.pomodoro);
+          setTotalSeconds(saved.total);
+          setSecondsLeft(Math.ceil((saved.endTime - Date.now()) / 1000));
+          setRunning(true);
+        } else if (saved.endTime && saved.secondsLeft !== undefined) {
+          // Timer expired while backgrounded — show final state.
+          setMode(saved.mode as TimerMode);
+          setPomodoro(saved.pomodoro);
+          setTotalSeconds(saved.total);
+          setSecondsLeft(0);
+          clearPersistedTimer();
+        }
+      }
+    } catch { /* noop */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startTimer = useCallback(() => {
+    // When resuming from pause, recalculate the end time from the current remaining.
+    endTimeRef.current = Date.now() + secondsLeft * 1000;
+    persistTimerState(endTimeRef.current, secondsLeft, mode, pomodoro, totalSeconds);
+    setRunning(true);
+  }, [secondsLeft, mode, pomodoro, totalSeconds, persistTimerState]);
+
+  const pauseTimer = useCallback(() => {
+    endTimeRef.current = null;
+    clearPersistedTimer();
+    setRunning(false);
+  }, [clearPersistedTimer]);
+
+  const toggleTimer = useCallback(() => {
+    if (runningRef.current) {
+      pauseTimer();
+    } else {
+      startTimer();
+    }
+  }, [startTimer, pauseTimer]);
 
   const applyMode = useCallback((m: TimerMode) => {
     setMode(m)
@@ -1289,6 +1478,9 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   // Session end: chime / notify / auto-advance according to preferences.
   useEffect(() => {
     if (secondsLeft !== 0 || !running) return
+    // Clear the persisted timer since the session finished.
+    endTimeRef.current = null
+    clearPersistedTimer()
     // A finished FOCUS interval is real focus time.
     if (mode === "focus") recordFocusSession()
     const prefOn = (id: string) => prefs.some((p) => p.id === id && p.on)
@@ -1307,7 +1499,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     } else {
       setRunning(false)
     }
-  }, [secondsLeft, running, mode, prefs, applyMode, totalPomodoros, recordFocusSession])
+  }, [secondsLeft, running, mode, prefs, applyMode, totalPomodoros, recordFocusSession, clearPersistedTimer])
 
   // When the timer is idle, reflect the configured durations immediately.
   useEffect(() => {
@@ -1320,6 +1512,8 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   }, [focusMinutes, breakMinutes, mode, running, totalSeconds])
 
   const skipTimer = useCallback(() => {
+    endTimeRef.current = null
+    clearPersistedTimer()
     setRunning(false)
     if (mode === "focus") {
       setPomodoro((p) => (p >= totalPomodoros ? 1 : p + 1))
@@ -1327,18 +1521,22 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     } else {
       applyMode("focus")
     }
-  }, [mode, applyMode])
+  }, [mode, applyMode, clearPersistedTimer])
 
   const stopTimer = useCallback(() => {
+    endTimeRef.current = null
+    clearPersistedTimer()
     setRunning(false)
     applyMode("focus")
     setPomodoro(1)
-  }, [applyMode])
+  }, [applyMode, clearPersistedTimer])
 
   const resetTimer = useCallback(() => {
+    endTimeRef.current = null
+    clearPersistedTimer()
     setRunning(false)
     setSecondsLeft(totalSeconds)
-  }, [totalSeconds])
+  }, [totalSeconds, clearPersistedTimer])
 
   // Wipe every piece of local data — Settings → "Clear all data".
   // The source ships empty, so any lingering demo/test data lives in
@@ -1605,7 +1803,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
           checkStreakMilestones(h.streak + 1)
           setHabits((prev) =>
             prev.map((x) =>
-              x.id === id ? { ...x, doneToday: true, streak: x.streak + 1, rewardedDay: today } : x,
+              x.id === id ? { ...x, doneToday: true, streak: x.streak + 1, rewardedDay: today, completedDays: x.completedDays.includes(today) ? x.completedDays : [...x.completedDays, today] } : x,
             ),
           )
         } else {
@@ -1623,14 +1821,13 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
           const rand = Math.random().toString(36).slice(2, 8)
           setXpEvents((prev) => [...prev, { id: `revoke-${stamp}-${rand}`, amount: -5 }])
           setXp(Math.max(0, xpRef.current))
-        }
-        setHabits((prev) =>
-          prev.map((x) =>
-            x.id === id
-              ? { ...x, doneToday: false, streak: Math.max(0, x.streak - 1), rewardedDay: "" }
-              : x,
-          ),
-        )
+        }          setHabits((prev) =>
+            prev.map((x) =>
+              x.id === id
+                ? { ...x, doneToday: false, streak: Math.max(0, x.streak - 1), rewardedDay: "", completedDays: x.completedDays.filter((d) => d !== today) }
+                : x,
+            ),
+          )
       }
     },
     [habits, addXp, checkStreakMilestones, setXp, setXpEvents],
@@ -1641,7 +1838,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       {
         id: `h-${Date.now()}`, name, streak: 0, doneToday: false,
         week: week ?? [true, true, true, true, true, true, false],
-        shields: 0, rewardedDay: "",
+        shields: 0, rewardedDay: "", completedDays: [],
         reminderEnabled: reminderEnabled ?? false,
         reminderTime: reminderTime ?? "09:00",
       },
@@ -2066,6 +2263,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       streakShields,
       buyShield,
       buyHabitShield,
+      undoLastShieldUse,
       achievements,
       bestStreak,
       totalTasksDone,

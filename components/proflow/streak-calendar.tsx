@@ -17,37 +17,73 @@ function dateKey(d: Date): string {
 }
 
 /**
- * Build the set of dates that should be marked as "completed" for a habit,
- * given its current streak count and weekly schedule.  We walk backwards from
- * today counting scheduled days that were completed, so the calendar can
- * light up the right cells.
+ * Build the set of dates that should be marked as "completed" for a habit.
+ *
+ * Instead of guessing from the streak count (which breaks when the schedule
+ * has gaps), we use the actual `completedDays` array stored per habit. This
+ * array is populated by toggleHabit and records every date the user checked.
  */
 function completedDates(habit: Habit, today: Date): Set<string> {
   const done = new Set<string>()
-  if (habit.streak <= 0) return done
 
-  // If today is completed, include it
+  // Add today if checked
   if (habit.doneToday) {
     done.add(dateKey(today))
   }
 
-  // Walk backwards from yesterday to find the streak days
-  const cursor = new Date(today)
-  cursor.setDate(cursor.getDate() - 1)
-  let streakLeft = habit.streak - (habit.doneToday ? 1 : 0)
+  // Use the actual completed days history — no guessing needed.
+  // We only show dates that fall within the visible calendar range, so
+  // limit to ~60 days back to keep the set small.
+  const cutoff = new Date(today)
+  cutoff.setDate(cutoff.getDate() - 60)
+  const cutoffKey = dateKey(cutoff)
 
-  // Safety cap: don't walk more than 400 days
-  let safety = 400
-  while (streakLeft > 0 && safety-- > 0) {
-    const dayIdx = (cursor.getDay() + 6) % 7 // Monday-first
-    if (habit.week[dayIdx]) {
-      done.add(dateKey(cursor))
-      streakLeft--
+  for (const d of habit.completedDays) {
+    if (d >= cutoffKey) {
+      done.add(d)
     }
-    cursor.setDate(cursor.getDate() - 1)
   }
 
   return done
+}
+
+/**
+ * Compute the actual streak count from a habit's completedDays history.
+ * Walks backwards from today counting consecutive scheduled days that were
+ * completed. This is the authoritative streak, matching what the calendar shows.
+ */
+function computeActualStreak(habit: Habit, today: Date): number {
+  let streak = 0
+  if (habit.doneToday) {
+    streak = 1
+  }
+
+  const cursor = new Date(today)
+  cursor.setDate(cursor.getDate() - 1)
+
+  const completedSet = new Set(habit.completedDays)
+  // Also include today if doneToday
+  if (habit.doneToday) completedSet.add(dateKey(today))
+
+  let safety = 400
+  while (safety-- > 0) {
+    const key = dateKey(cursor)
+    const dayIdx = (cursor.getDay() + 6) % 7
+
+    if (habit.week[dayIdx]) {
+      // Scheduled day — check if completed
+      if (completedSet.has(key)) {
+        streak++
+      } else {
+        // Missed a scheduled day — streak broken
+        break
+      }
+    }
+    // Non-scheduled days are skipped (don't break the streak)
+    cursor.setDate(cursor.getDate() - 1)
+  }
+
+  return streak
 }
 
 export function StreakCalendar({
@@ -72,6 +108,12 @@ export function StreakCalendar({
     [habit, today],
   )
 
+  // Compute the real streak from actual completion data (not the stored counter)
+  const actualStreak = useMemo(
+    () => (habit ? computeActualStreak(habit, today) : 0),
+    [habit, today],
+  )
+
   const todayKeyStr = dateKey(today)
 
   // Build the grid for the current month
@@ -93,7 +135,7 @@ export function StreakCalendar({
       const key = dateKey(date)
       const dayIdx = (date.getDay() + 6) % 7
       const scheduled = habit ? habit.week[dayIdx] : false
-      const isPast = date.getTime() <= today.getTime()
+      const isPast = date.getTime() < today.getTime()
       cells.push({
         day: d,
         key,
@@ -139,7 +181,7 @@ export function StreakCalendar({
             {MONTH_NAMES[month]} {year}
           </span>
           <span className="flex items-center gap-1 rounded-full bg-focus/15 px-2 py-0.5 text-[10px] font-bold text-focus">
-            🔥 {habit.streak}d
+            🔥 {actualStreak}d
           </span>
         </div>
         <button type="button" onClick={nextMonth} className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
@@ -169,17 +211,9 @@ export function StreakCalendar({
             ring = "ring-2 ring-focus"
           }
 
-          if (cell.scheduled && cell.isPast && !cell.completed) {
-            // Missed scheduled day
-            bg = "bg-danger/20"
-            text = "text-danger"
-          } else if (cell.completed) {
+          if (cell.completed) {
             bg = "bg-focus"
             text = "text-white font-bold"
-          } else if (cell.scheduled && !cell.isPast) {
-            // Future scheduled day
-            bg = "bg-focus/10"
-            text = "text-focus/60"
           }
 
           return (
@@ -208,9 +242,7 @@ export function StreakCalendar({
       {/* Legend (non-compact only) */}
       {!compact && (
         <div className="mt-2 flex items-center justify-center gap-3 text-[10px] text-muted-foreground">
-          <span className="flex items-center gap-1"><span className="size-2 rounded-sm bg-focus" /> Done</span>
-          <span className="flex items-center gap-1"><span className="size-2 rounded-sm bg-danger/30" /> Missed</span>
-          <span className="flex items-center gap-1"><span className="size-2 rounded-sm bg-focus/15" /> Upcoming</span>
+          <span className="flex items-center gap-1"><span className="size-2 rounded-sm bg-focus" /> Completed</span>
         </div>
       )}
     </div>

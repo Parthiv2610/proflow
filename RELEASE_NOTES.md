@@ -1,10 +1,36 @@
 # 🚀 ProFlow — Release Notes
 
-> ℹ️ **Latest update (v3.3.0):** Dashboard visual refresh with colored accents, gradients, habit pill coloring, and progress bar gradients.
+> ℹ️ **Latest update (v3.4.0):** Focus timer background survival, streak calendar fix, shield undo, 9 accent colors, and native Android notifications.
 
 ---
 
-## ✨ v3.3.0 — Dashboard Visual Refresh
+## 🚀 v3.4.0 — Focus Timer, Streak Calendar Fix & Native Notifications
+
+### ⏱ Focus Timer
+- **Background survival** — timer stays accurate when the app is backgrounded or phone sleeps (timestamp-based instead of interval-based)
+- **Auto-resume** — timer restores from localStorage on app reopen
+- **Smoother countdown** — 500ms tick for smoother digit transitions
+- **Visibility sync** — timer corrects instantly when returning to foreground
+
+### 📅 Streak Calendar Fix
+- **Actual completion data** — calendar now shows exactly which days were completed (stored per-habit) instead of guessing from streak count
+- **Accurate streak computation** — walks backwards from today counting consecutive completed scheduled days; handles broken schedules correctly
+- **Cleaned up display** — only shows completed days (green fill); future/missed days are neutral
+
+### 🛡 Shield Undo
+- **Undo last shield use** — restores the shield to the pool and recalculates the streak from actual completion data
+- **Visible in Habits tab** — undo button appears next to the Buy button when shields are held
+
+### 🎨 9 Accent Colors
+- Added **Indigo, Teal, Cyan, Orange, and Rose** alongside the existing Purple, Blue, Green, Amber
+
+### 📱 Native Android Notifications
+- **Real device notifications** — all app notifications (achievements, task completion, focus reminders, etc.) now appear in the Android notification tray and lock screen
+- **Auto-permission request** — asks for notification permission on first launch (Android 13+)
+
+### Bug Fixes
+- Streak calendar no longer shows today as "missed" before you check it
+- Shield undo restores the shared pool and recalculates streaks correctly
 
 ### 🎨 Dashboard
 - **Gradient hero header** with soft tinted background and floating blur orbs

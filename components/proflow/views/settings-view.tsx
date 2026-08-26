@@ -86,7 +86,7 @@ export function SettingsView() {
     e.target.value = ""
   }
 
-  const themes = ["Purple", "Blue", "Green", "Amber"]      // ── Data backup: export / import everything stored under the proflow- prefix ──
+  const themes = ["Purple", "Blue", "Indigo", "Green", "Teal", "Cyan", "Orange", "Amber", "Rose"]      // ── Data backup: export / import everything stored under the proflow- prefix ──
   // All app state (tasks, habits, goals, events, notes, focus log, settings,
   // XP, badges) lives in localStorage under "proflow-" keys. Export collects
   // every one of those keys into a single JSON file; import validates the file,

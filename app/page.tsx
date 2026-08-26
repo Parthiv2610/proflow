@@ -41,6 +41,11 @@ function Workspace() {
   }, [])
   const closePalette = useCallback(() => setPaletteOpen(false), [])
 
+  // Request notification permission on mount (Android 13+ and desktop).
+  useEffect(() => {
+    import("@/lib/notify").then(({ requestNotificationPermission }) => requestNotificationPermission())
+  }, [])
+
   // ⌘P / Ctrl+P global toggle
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
