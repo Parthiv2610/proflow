@@ -1,8 +1,32 @@
 # 🚀 ProFlow — Release Notes
 
-> ℹ️ **Latest update (v3.4.0):** Focus timer background survival, streak calendar fix, shield undo, 9 accent colors, and native Android notifications.
+> ℹ️ **Latest update (v3.5.0):** Checklist XP rewards, inline checklist toggling on dashboard, sidebar group dividers, and new accent colors.
 
 ---
+## ✨ v3.5.0 — Checklist XP, Inline Toggle & Sidebar Polish
+
+### ✅ Checklist XP Rewards
+- **+5 XP per checklist item** checked off (same as subtask completion)
+- XP earned with confetti celebration for each check
+- **Bulk check** awards XP per item checked
+- Checklist completions count toward **task achievement milestones** (10/50/100/250/500)
+- Safe to uncheck — no XP penalty for misclicks
+
+### 📋 Inline Checklist Toggle
+- **Check items from the dashboard** — each checklist shows up to 4 items with working checkboxes
+- **Check items from the Checklists tab** — checklist cards show 5 preview items you can toggle directly
+- Click item text or "+more" to open the full detail view
+- XP is awarded for inline checks just like in the detail view
+
+### 🗂 Sidebar Reorganization
+- **Grouped navigation** — Main (Dashboard/Tasks/Checklists), Focus (Habits/Focus), Content (Notes/Calendar/Progress)
+- **Visual dividers** between every section for clear separation
+- **Even vertical spacing** — sections spread evenly across the sidebar height instead of bunching at the top
+
+### 🎨 9 Accent Colors (Added in v3.4)
+- Purple, Blue, Indigo, Green, Teal, Cyan, Orange, Amber, Rose
+
+
 
 ## 🚀 v3.4.0 — Focus Timer, Streak Calendar Fix & Native Notifications
 

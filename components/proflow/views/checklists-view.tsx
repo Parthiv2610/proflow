@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import {
   Archive,
+  Check,
   CheckSquare,
   ChevronRight,
   Clock,
@@ -16,7 +17,7 @@ import {
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useStore, type Checklist, type ChecklistItem } from "../store"
+import { useStore, type Checklist } from "../store"
 import { PageHeader, Card, ProgressBar } from "../ui"
 import { CHECKLIST_TEMPLATES, CHECKLIST_CATEGORIES } from "../checklist-templates"
 import { ChecklistDialog } from "../checklist-dialog"
@@ -182,6 +183,7 @@ export function ChecklistsView() {
               key={cl.id}
               list={cl}
               onClick={() => setOpenListId(cl.id)}
+              onToggleItem={toggleChecklistItem}
               onContextMenu={(e) => {
                 e.preventDefault()
                 setContextMenu({ listId: cl.id, x: e.clientX, y: e.clientY })
@@ -210,6 +212,7 @@ export function ChecklistsView() {
                   key={cl.id}
                   list={cl}
                   onClick={() => setOpenListId(cl.id)}
+                  onToggleItem={toggleChecklistItem}
                   onContextMenu={(e) => {
                     e.preventDefault()
                     setContextMenu({ listId: cl.id, x: e.clientX, y: e.clientY })
@@ -294,20 +297,27 @@ function ChecklistCard({
   list,
   onClick,
   onContextMenu,
+  onToggleItem,
 }: {
   list: Checklist
   onClick: () => void
   onContextMenu: (e: React.MouseEvent) => void
+  onToggleItem: (listId: string, itemId: string) => void
 }) {
   const total = list.items.length
   const done = list.items.filter((i) => i.done).length
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
   const overdue = list.items.filter((i) => !i.done && i.due && i.due < new Date().toISOString().slice(0, 10)).length
 
+  // Show first 2 checked + first 4 unchecked items for quick toggling
+  const previewItems = [
+    ...list.items.filter((i) => i.done).slice(0, 2),
+    ...list.items.filter((i) => !i.done).slice(0, 4),
+  ].slice(0, 5)
+
   return (
     <div
       className="group cursor-pointer"
-      onClick={onClick}
       onContextMenu={onContextMenu}
     >
     <Card
@@ -319,7 +329,12 @@ function ChecklistCard({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-sm font-semibold text-foreground">{list.name}</h3>
+            <h3
+              className="truncate text-sm font-semibold text-foreground hover:underline"
+              onClick={onClick}
+            >
+              {list.name}
+            </h3>
             {list.pinned && <Pin className="size-3 shrink-0 fill-primary text-primary" />}
             {list.recurring && (
               <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary capitalize">
@@ -346,18 +361,41 @@ function ChecklistCard({
           </div>
         </div>
       )}
-      {list.items.length > 0 && (
+      {previewItems.length > 0 && (
         <div className="mt-3 space-y-1">
-          {list.items.filter((i) => !i.done).slice(0, 3).map((item) => (
-            <div key={item.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="size-3 shrink-0 rounded border border-muted-foreground/40" />
-              <span className="truncate">{item.title}</span>
-            </div>
+          {previewItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleItem(list.id, item.id)
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left text-xs transition-colors hover:bg-secondary/50"
+            >
+              <span
+                className={cn(
+                  "flex size-4 shrink-0 items-center justify-center rounded border transition-colors",
+                  item.done
+                    ? "border-success bg-success text-success-foreground"
+                    : "border-muted-foreground/50 text-transparent hover:border-primary",
+                )}
+              >
+                {item.done && <Check className="size-3" />}
+              </span>
+              <span className={cn("truncate text-muted-foreground", item.done && "text-muted-foreground/50 line-through")}>
+                {item.title}
+              </span>
+            </button>
           ))}
-          {list.items.filter((i) => !i.done).length > 3 && (
-            <p className="text-xs text-muted-foreground/60">
-              +{list.items.filter((i) => !i.done).length - 3} more
-            </p>
+          {list.items.length > previewItems.length && (
+            <button
+              type="button"
+              onClick={onClick}
+              className="w-full px-1.5 pt-1 text-left text-xs text-muted-foreground/60 hover:text-foreground"
+            >
+              +{list.items.length - previewItems.length} more
+            </button>
           )}
         </div>
       )}

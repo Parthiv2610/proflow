@@ -11,15 +11,28 @@ type NavItem = {
   badge?: number
 }
 
-const navItems: NavItem[] = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "tasks", label: "Tasks", icon: ListTodo },
-  { id: "checklists", label: "Checklists", icon: CheckSquare },
-  { id: "habits", label: "Habits", icon: Target },
-  { id: "focus", label: "Focus", icon: Timer },
-  { id: "notes", label: "Notes", icon: FileText },
-  { id: "calendar", label: "Calendar", icon: Calendar },
-  { id: "progress", label: "Progress", icon: Trophy },
+// Grouped nav sections with dividers between them
+const navGroups: { items: NavItem[] }[] = [
+  {
+    items: [
+      { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { id: "tasks", label: "Tasks", icon: ListTodo },
+      { id: "checklists", label: "Checklists", icon: CheckSquare },
+    ],
+  },
+  {
+    items: [
+      { id: "habits", label: "Habits", icon: Target },
+      { id: "focus", label: "Focus", icon: Timer },
+    ],
+  },
+  {
+    items: [
+      { id: "notes", label: "Notes", icon: FileText },
+      { id: "calendar", label: "Calendar", icon: Calendar },
+      { id: "progress", label: "Progress", icon: Trophy },
+    ],
+  },
 ]
 
 export function Sidebar() {
@@ -39,21 +52,27 @@ export function Sidebar() {
         <span className="text-sm font-semibold text-sidebar-foreground">ProFlow</span>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2">
-        <div className="nav-enter flex flex-col gap-0.5">
-          {navItems.map((item) => (
-            <NavButton
-              key={item.id}
-              item={item}
-              active={view === item.id}
-              badge={item.id === "tasks" ? overdueCount : undefined}
-              onClick={() => setView(item.id)}
-            />
-          ))}
-        </div>
+      <nav className="flex-1 overflow-y-auto px-2 flex flex-col justify-between py-2">
+        {navGroups.map((group, gi) => (
+          <div key={gi} className="flex flex-col">
+            {gi > 0 && <div className="mx-2 my-1.5 h-px bg-sidebar-border/50" />}
+            <div className="nav-enter flex flex-col gap-0.5">
+              {group.items.map((item) => (
+                <NavButton
+                  key={item.id}
+                  item={item}
+                  active={view === item.id}
+                  badge={item.id === "tasks" ? overdueCount : undefined}
+                  onClick={() => setView(item.id)}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
       </nav>
 
-      <div className="px-2 pb-2 space-y-0.5">
+      <div className="px-2 pb-3 flex flex-col">
+        <div className="mx-2 my-1.5 h-px bg-sidebar-border/50" />
         <NavButton
           item={{ id: "notifications", label: "Notifications", icon: Bell }}
           active={view === "notifications"}
@@ -66,10 +85,11 @@ export function Sidebar() {
           active={view === "settings"}
           onClick={() => setView("settings")}
         />
+        <div className="mx-2 my-1.5 h-px bg-sidebar-border/50" />
         <button
           type="button"
           onClick={() => setView("settings")}
-          className="mt-1 flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent"
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent"
         >
           {avatarUrl ? (
             <span className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full">

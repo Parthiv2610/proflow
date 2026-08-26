@@ -778,6 +778,10 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     totalTasksRef.current = totalTasksDone
   }, [totalTasksDone])
+  // Completed checklist items also count toward the lifetime completion counter.
+  const completedChecklistCount = useMemo(() => {
+    return checklists.reduce((sum, cl) => sum + cl.items.filter((it) => it.done).length, 0)
+  }, [checklists])
   // Lifetime log of completed recurring-task occurrences (the completion date).
   // Recurring tasks roll straight back to "todo" after a completion — they never
   // sit in the "done" state the derived counter below reads — so every
@@ -785,17 +789,16 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   // counter and the daily/weekly charts. Capped so the log can't grow forever
   // (a weekly repeat is ~52 entries a year).
   const [recurringLog, setRawRecurringLog] = useLocalStorage<string[]>("recurringLog", [])
-  // Lifetime task-completions counter — tasks moved to completedTasks PLUS every
-  // completed recurring occurrence. Note: completions made before this log existed
-  // are not back-filled — their badges were already granted at completion time.
+  // Lifetime task-completions counter — tasks + recurring occurrences + completed
+  // checklist items. Note: completions made before this log existed are not
+  // back-filled — their badges were already granted at completion time.
   useEffect(() => {
-    const done = completedTasks.length
-    const total = done + recurringLog.length
+    const total = completedTasks.length + recurringLog.length + completedChecklistCount
     if (total !== totalTasksRef.current) {
       totalTasksRef.current = total
       setTotalTasksDone(total)
     }
-  }, [completedTasks, recurringLog, setTotalTasksDone])
+  }, [completedTasks, recurringLog, completedChecklistCount, setTotalTasksDone])
   // Lifetime focus-session counter — kept in sync with the focus log.
   const totalFocusRef = useRef(0)
   useEffect(() => {
@@ -857,7 +860,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     try {
       if (localStorage.getItem("proflow-achievements") !== null) return
       const maxStreak = habits.reduce((m, h) => Math.max(m, h.streak), 0)
-      const tasksDone = completedTasks.length + recurringLog.length
+      const tasksDone = completedTasks.length + recurringLog.length + completedChecklistCount
       const focusSessions = focusLog.reduce((s, e) => s + e.sessions, 0)
       if (maxStreak > 0) {
         bestStreakRef.current = maxStreak
@@ -877,7 +880,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // storage unavailable — nothing to seed
     }
-  }, [tasks, completedTasks, habits, focusLog, recurringLog, setBestStreak, setTotalTasksDone, setAchievements])
+  }, [tasks, completedTasks, habits, focusLog, recurringLog, completedChecklistCount, setBestStreak, setTotalTasksDone, setAchievements])
 
   const buyShield = useCallback(() => {
     if (shieldsRef.current >= MAX_SHIELDS || xpRef.current < SHIELD_PRICE) return false
@@ -2106,11 +2109,16 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
 
   const toggleChecklistItem = useCallback(
     (listId: string, itemId: string) => {
-      setChecklists((prev) => prev.map((cl) => {
-        if (cl.id !== listId) return cl
+      // Capture current state before the update to detect check vs uncheck.
+      const cl = checklists.find((c) => c.id === listId)
+      const item = cl?.items.find((it) => it.id === itemId)
+      const wasDone = item?.done ?? false
+
+      setChecklists((prev) => prev.map((c) => {
+        if (c.id !== listId) return c
         return {
-          ...cl,
-          items: cl.items.map((it) => {
+          ...c,
+          items: c.items.map((it) => {
             if (it.id !== itemId) return it
             const done = !it.done
             return {
@@ -2120,8 +2128,15 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
           }),
         }
       }))
+
+      // Award XP only when checking an item (not unchecking).
+      if (!wasDone) {
+        addXp(5)
+        celebrate()
+        checkTaskMilestones()
+      }
     },
-    [setChecklists],
+    [setChecklists, checklists, addXp, checkTaskMilestones],
   )
 
   const reorderChecklistItems = useCallback(
@@ -2151,8 +2166,21 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
           }),
         }
       }))
+      // Award XP for each newly checked item.
+      if (done) {
+        const cl = checklists.find((c) => c.id === listId)
+        const newlyChecked = itemIds.filter((id) => {
+          const it = cl?.items.find((i) => i.id === id)
+          return it && !it.done
+        }).length
+        for (let i = 0; i < newlyChecked; i++) addXp(5)
+        if (newlyChecked > 0) {
+          celebrate()
+          for (let i = 0; i < newlyChecked; i++) checkTaskMilestones()
+        }
+      }
     },
-    [setChecklists],
+    [setChecklists, checklists, addXp, checkTaskMilestones],
   )
 
   const clearCompletedItems = useCallback(
