@@ -73,4 +73,4 @@ android/app/src/main/assets/capacitor.plugins.json
 *.log
 npm-debug.log*
 builder-debug.yml
-builder-effective-config.yaml
+builder-effective-config.yaml# CI trigger
