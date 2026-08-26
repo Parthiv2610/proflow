@@ -1,8 +1,8 @@
 {
   "name": "proflow",
-  "version": "3.5.2",
+  "version": "3.5.3",
   "private": true,
-  "description": "ProFlow — All-in-One Productivity Workspace",
+  "description": "ProFlow \u00e2\u20ac\u201d All-in-One Productivity Workspace",
   "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
@@ -63,7 +63,8 @@
         "repo": "proflow",
         "releaseType": "release"
       }
-    ]
+    ],
+    "asar": false
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
