@@ -1,0 +1,102 @@
+name: Build & Publish
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-installer:
+    name: Build ProFlow (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build static export
+        run: pnpm exec next build
+
+      - name: Verify build output
+        shell: bash
+        run: |
+          if [ ! -f out/index.html ]; then
+            echo "::error::out/index.html missing"
+            exit 1
+          fi
+          echo "Build OK: $(wc -c < out/index.html) bytes"
+
+      - name: Build installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec electron-builder --win --publish always
+
+      - name: Upload stable installer
+        shell: bash
+        run: |
+          INSTALLER=$(ls release/ProFlow-Setup-*.exe 2>/dev/null | head -1)
+          if [ -n "$INSTALLER" ]; then
+            cp "$INSTALLER" release/ProFlow-Setup.exe
+          fi
+
+      - name: Attach stable installer
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: release/ProFlow-Setup.exe
+
+  build-apk:
+    name: Build ProFlow APK
+    needs: build-installer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build static export
+        run: pnpm exec next build
+
+      - name: Verify build output
+        shell: bash
+        run: test -f out/index.html && echo "OK"
+
+      - name: Sync Android assets
+        run: pnpm exec cap sync android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: android/app/build/outputs/apk/release/app-release.apk

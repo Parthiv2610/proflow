@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Next.js cache
+.next/
+
+# Android / Capacity build output
+android/app/build/
+android/.gradle/
+android/build/
+android/capacitor-*
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Release output
+release/
+
+# Environment
+.env*.local
+
+# Logs
+*.log
+node.exe

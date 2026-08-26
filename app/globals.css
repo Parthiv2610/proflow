@@ -1,0 +1,414 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --color-focus: var(--focus);
+  --color-focus-foreground: var(--focus-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --font-sans: 'Geist', 'Geist Fallback';
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+}
+
+:root {
+  color-scheme: light;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+  --focus: oklch(0.72 0.14 65);
+  --focus-foreground: oklch(0.2 0.02 65);
+  --success: oklch(0.62 0.17 155);
+  --success-foreground: oklch(0.98 0 0);
+  --danger: oklch(0.577 0.245 27.325);
+  --danger-foreground: oklch(0.98 0 0);
+  --info: oklch(0.58 0.15 245);
+  --info-foreground: oklch(0.98 0 0);
+}
+
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.16 0.012 285);
+  --foreground: oklch(0.96 0.004 285);
+  --card: oklch(0.205 0.014 285);
+  --card-foreground: oklch(0.96 0.004 285);
+  --popover: oklch(0.205 0.014 285);
+  --popover-foreground: oklch(0.96 0.004 285);
+  --primary: oklch(0.62 0.2 292);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.27 0.015 285);
+  --secondary-foreground: oklch(0.96 0.004 285);
+  --muted: oklch(0.27 0.015 285);
+  --muted-foreground: oklch(0.68 0.015 286);
+  --accent: oklch(0.3 0.03 292);
+  --accent-foreground: oklch(0.96 0.004 285);
+  --destructive: oklch(0.64 0.22 25);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.62 0.2 292);
+  --focus: oklch(0.76 0.15 65);
+  --focus-foreground: oklch(0.2 0.02 65);
+  --success: oklch(0.72 0.17 155);
+  --success-foreground: oklch(0.2 0.02 155);
+  --danger: oklch(0.64 0.22 25);
+  --danger-foreground: oklch(0.98 0 0);
+  --info: oklch(0.66 0.15 245);
+  --info-foreground: oklch(0.98 0 0);
+  --chart-1: oklch(0.62 0.2 292);
+  --chart-2: oklch(0.76 0.15 65);
+  --chart-3: oklch(0.66 0.15 245);
+  --chart-4: oklch(0.72 0.17 155);
+  --chart-5: oklch(0.64 0.22 25);
+  --sidebar: oklch(0.185 0.013 285);
+  --sidebar-foreground: oklch(0.9 0.006 285);
+  --sidebar-primary: oklch(0.62 0.2 292);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.3 0.03 292);
+  --sidebar-accent-foreground: oklch(0.96 0.004 285);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.62 0.2 292);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    color-scheme: dark;
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ── Custom animations ─────────────────────────────────────── */
+
+/* Spring-like entrance for cards and views */
+@keyframes spring-in {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.005);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Slide-in from left for sidebar */
+@keyframes slide-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Subtle pulse for active indicators */
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--primary);
+  }
+  50% {
+    box-shadow: 0 0 8px 2px color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+}
+
+/* Number counter tick-up */
+@keyframes count-up {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* View transition wrapper */
+.view-enter {
+  animation: spring-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Stagger children — apply to a grid container */
+.stagger > * {
+  animation: spring-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 50ms; }
+.stagger > *:nth-child(3) { animation-delay: 100ms; }
+.stagger > *:nth-child(4) { animation-delay: 150ms; }
+.stagger > *:nth-child(5) { animation-delay: 200ms; }
+.stagger > *:nth-child(6) { animation-delay: 250ms; }
+.stagger > *:nth-child(7) { animation-delay: 300ms; }
+.stagger > *:nth-child(8) { animation-delay: 350ms; }
+.stagger > *:nth-child(9) { animation-delay: 400ms; }
+
+/* Sidebar nav items slide in */
+.nav-enter > * {
+  animation: slide-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.nav-enter > *:nth-child(1) { animation-delay: 0ms; }
+.nav-enter > *:nth-child(2) { animation-delay: 30ms; }
+.nav-enter > *:nth-child(3) { animation-delay: 60ms; }
+.nav-enter > *:nth-child(4) { animation-delay: 90ms; }
+.nav-enter > *:nth-child(5) { animation-delay: 120ms; }
+.nav-enter > *:nth-child(6) { animation-delay: 150ms; }
+.nav-enter > *:nth-child(7) { animation-delay: 180ms; }
+.nav-enter > *:nth-child(8) { animation-delay: 210ms; }
+
+/* ── Rendered note content (lib/markdown) ─────────────────────────── */
+.pf-prose {
+  line-height: 1.55;
+}
+.pf-prose h1 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0.5rem 0 0.25rem;
+  color: var(--foreground);
+}
+.pf-prose h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0.5rem 0 0.25rem;
+  color: var(--foreground);
+}
+.pf-prose h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0.4rem 0 0.2rem;
+  color: var(--foreground);
+}
+.pf-prose p {
+  margin: 0.3rem 0;
+}
+.pf-prose ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin: 0.3rem 0;
+}
+.pf-prose code {
+  background: var(--muted);
+  border-radius: 0.3rem;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.85em;
+  font-family: var(--font-mono);
+}
+.pf-prose hr {
+  margin: 0.6rem 0;
+  border-color: var(--border);
+}
+/* Task checklists inside notes */
+.pf-task-list {
+  list-style: none;
+  padding-left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0.3rem 0;
+}
+.pf-task-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--border);
+  font-size: 0.65rem;
+  margin-right: 0.45rem;
+  vertical-align: middle;
+  color: transparent;
+}
+.pf-task-box.checked {
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--success-foreground);
+}
+
+/* [[Wiki links]] rendered inside note bodies — clickable, accent-colored.
+   The reader intercepts clicks and navigates to the linked note. */
+.pf-wiki {
+  color: var(--primary);
+  cursor: pointer;
+  border-radius: 0.2rem;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  text-underline-offset: 2px;
+  padding: 0 0.05rem;
+  transition: background 0.15s;
+}
+.pf-wiki:hover {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.pf-wiki:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Print / Save-as-PDF: only the note body is printed, cleanly. Everything
+   else (sidebar, tabs, reader chrome) is hidden via the visibility trick. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .pf-print-area,
+  .pf-print-area * {
+    visibility: visible;
+  }
+  .pf-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow: visible;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .pf-print-area,
+  .pf-print-area .pf-prose,
+  .pf-print-area h1,
+  .pf-print-area h2,
+  .pf-print-area h3,
+  .pf-print-area p,
+  .pf-print-area li {
+    color: #000 !important;
+    background: #fff !important;
+  }
+  .pf-print-area a {
+    color: #000 !important;
+  }
+  .pf-print-area img {
+    max-height: 5in;
+    width: auto;
+  }
+  .pf-print-area audio,
+  .pf-print-area video {
+    display: none;
+  }
+  .pf-print-area figure,
+  .pf-print-area section {
+    break-inside: avoid;
+  }
+  /* Print the target of [[wiki links]] next to the link. */
+  .pf-print-area .pf-wiki::after {
+    content: " (" attr(data-note-title) ")";
+    font-style: italic;
+  }
+}
