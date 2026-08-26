@@ -149,8 +149,27 @@ function createWindow() {
     win.loadURL("http://localhost:3000")
     win.webContents.openDevTools()
   } else {
-    // In production, load the exported static build
-    win.loadFile(path.join(__dirname, "..", "out", "index.html"))
+    // In production, load the exported static build.
+    // In packaged Electron (asar), __dirname = resources/app.asar/electron.
+    // path.join(__dirname, "..") gives resources/app.asar which is the app root.
+    const htmlPath = path.join(__dirname, "..", "out", "index.html")
+    console.log("[ProFlow] __dirname:", __dirname)
+    console.log("[ProFlow] Loading:", htmlPath)
+    win.loadFile(htmlPath).catch((err) => {
+      console.error("[ProFlow] loadFile FAILED:", err)
+      // Show diagnostic info in the window so the user can screenshot it
+      const info = [
+        "ProFlow Load Error",
+        "Error: " + String(err && err.message || err),
+        "__dirname: " + __dirname,
+        "htmlPath: " + htmlPath,
+        "exe: " + app.getPath("exe"),
+        "appData: " + app.getPath("appData"),
+        "exe dir: " + path.dirname(app.getPath("exe")),
+      ].join("
+")
+      win.loadURL("data:text/html,<pre style='white-space:pre;word-wrap:break-word;padding:20px;font-size:14px'>" + info + "</pre>")
+    })
   }
 
   mainWindow = win
