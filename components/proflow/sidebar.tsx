@@ -51,10 +51,10 @@ export function Sidebar() {
         <span className="text-sm font-semibold text-sidebar-foreground">ProFlow</span>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 flex flex-col justify-between py-2">
+      <nav className="flex-1 overflow-y-auto px-2 flex flex-col gap-0 py-1">
         {navGroups.map((group, gi) => (
           <div key={gi} className="flex flex-col">
-            {gi > 0 && <div className="mx-2 my-1.5 h-px bg-sidebar-border/50" />}
+            {gi > 0 && <div className="mx-2 my-0.5 h-px bg-sidebar-border/50" />}
             <div className="nav-enter flex flex-col gap-0.5">
               {group.items.map((item) => (
                 <NavButton
