@@ -187,6 +187,108 @@ function showError(msg, detail) {
 }
 
 // ---------------------------------------------------------------------------
+// LAN Sync Server
+// ---------------------------------------------------------------------------
+let lanServer = null;
+let lanData = {};
+
+function getLocalIp() {
+  const { networkInterfaces } = require("os");
+  const nets = networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === "IPv4" && !net.internal) return net.address;
+    }
+  }
+  return "127.0.0.1";
+}
+
+function startLanHttpServer(port, data) {
+  return new Promise((resolve, reject) => {
+    try {
+      const http = require("http");
+      lanData = data || {};
+
+      const server = http.createServer((req, res) => {
+        // CORS headers
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, PUT, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+        if (req.method === "OPTIONS") {
+          res.writeHead(204);
+          res.end();
+          return;
+        }
+
+        // GET /sync — client pulls data
+        if (req.method === "GET" && req.url === "/sync") {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ data: lanData, syncedAt: new Date().toISOString() }));
+          return;
+        }
+
+        // PUT /sync — client pushes data
+        if (req.method === "PUT" && req.url === "/sync") {
+          let body = "";
+          req.on("data", (chunk) => { body += chunk; });
+          req.on("end", () => {
+            try {
+              const parsed = JSON.parse(body);
+              if (parsed.data && typeof parsed.data === "object") {
+                lanData = parsed.data;
+                // Also write to the renderer's localStorage via window
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.executeJavaScript(
+                    `(${applyDataStr})(JSON.parse('${JSON.stringify(parsed.data).replace(/'/g, "\\'")}'))`
+                  );
+                }
+              }
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ ok: true, syncedAt: new Date().toISOString() }));
+            } catch (e) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: e.message }));
+            }
+          });
+          return;
+        }
+
+        // GET / — status page
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end("ProFlow LAN Sync is running. Use /sync to exchange data.");
+      });
+
+      server.on("error", (err) => reject(err));
+
+      server.listen(port, "0.0.0.0", () => {
+        lanServer = server;
+        log("LAN sync server started on port " + port);
+        resolve({ port, ip: getLocalIp() });
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+const applyDataStr = `function(d){for(var k in d){try{localStorage.setItem('proflow-'+k,JSON.stringify(d[k]))}catch(e){}}}`;
+
+function stopLanHttpServer() {
+  return new Promise((resolve) => {
+    if (lanServer) {
+      lanServer.close(() => {
+        lanServer = null;
+        log("LAN sync server stopped");
+        resolve();
+      });
+    } else {
+      resolve();
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // IPC
 // ---------------------------------------------------------------------------
 ipcMain.handle("get-app-version", () => getAppVersion());
@@ -205,6 +307,19 @@ ipcMain.handle("update:download", () => {
 ipcMain.handle("update:install", () => {
   try { if (autoUpdater) autoUpdater.quitAndInstall(false, true); } catch (_) {}
   return { status: "installing" };
+});
+ipcMain.handle("lan-sync:start", async (event, opts) => {
+  try {
+    const { port, data } = opts || {};
+    const result = await startLanHttpServer(port || 7777, data || {});
+    return { localIp: result.ip, port: result.port };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+ipcMain.handle("lan-sync:stop", async () => {
+  await stopLanHttpServer();
+  return { ok: true };
 });
 ipcMain.handle("backup:autoSave", async (event, payload) => {
   try {

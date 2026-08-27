@@ -14,13 +14,13 @@ import {
   FileJson,
   Moon,
   Sun,
-  Cloud,
+  Wifi,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useUpdate } from "@/lib/use-update"
 import { isCapacitor } from "@/lib/lan-sync"
 import { showNotification } from "@/lib/notify"
-import { getSyncConfig, setSyncConfig, pushToGitHub, pullFromGitHub, clearSyncConfig, type SyncInfo } from "@/lib/github-sync"
+import { startLanServer, stopLanServer, pullFromLan, pushToLan, getLanConfig, setLanConfig, type LanSyncInfo } from "@/lib/lan-sync"
 import { Card, PageHeader } from "../ui"
 import { useStore, ACCENTS, ACHIEVEMENTS } from "../store"
 
@@ -74,12 +74,10 @@ export function SettingsView() {
   // Parsed backup waiting for confirmation — import replaces current data.
   const [pendingImport, setPendingImport] = useState<Record<string, string> | null>(null)
 
-  // ── GitHub sync ──
-  const syncCfg = getSyncConfig()
-  const [syncToken, setSyncToken] = useState(syncCfg.token)
-  const [syncRepo, setSyncRepo] = useState(syncCfg.repo)
-  const [syncAuto, setSyncAuto] = useState(syncCfg.autoSync)
-  const [syncInfo, setSyncInfo] = useState<SyncInfo>({ lastSync: syncCfg.lastSync, error: null, status: "idle" })
+  // ── LAN sync ──
+  const lanCfg = getLanConfig()
+  const [lanUrl, setLanUrl] = useState(lanCfg.lastUrl)
+  const [lanInfo, setLanInfo] = useState<LanSyncInfo>({ status: "idle", url: null, error: null })
   // Local string state so the user can clear the field while typing without the
   // controlled value snapping back to "0" on every keystroke.
 
@@ -256,35 +254,34 @@ export function SettingsView() {
     }
   }
 
-  // ── GitHub sync handlers ──
-  const handleSyncSave = () => {
-    setSyncConfig({ token: syncToken, repo: syncRepo, autoSync: syncAuto })
-    showNotification("ProFlow", "Sync settings saved")
+  // ── LAN sync handlers ──
+  const handleStartServer = async () => {
+    setLanInfo({ status: "starting", url: null, error: null })
+    const result = await startLanServer()
+    setLanInfo(result)
   }
 
-  const handlePush = async () => {
-    if (!syncToken || !syncRepo) { setSyncInfo({ ...syncInfo, error: "Enter token and repo first" }); return }
-    setSyncInfo({ ...syncInfo, status: "pushing", error: null })
-    const result = await pushToGitHub(syncToken, syncRepo)
-    setSyncInfo(result)
-    if (!result.error) showNotification("ProFlow", "✅ Data pushed to GitHub")
+  const handleStopServer = async () => {
+    await stopLanServer()
+    setLanInfo({ status: "idle", url: null, error: null })
   }
 
-  const handlePull = async () => {
-    if (!syncToken || !syncRepo) { setSyncInfo({ ...syncInfo, error: "Enter token and repo first" }); return }
-    setSyncInfo({ ...syncInfo, status: "pulling", error: null })
-    const result = await pullFromGitHub(syncToken, syncRepo)
-    setSyncInfo(result)
-    if (!result.error) { showNotification("ProFlow", "✅ Data pulled from GitHub"); window.location.reload() }
+  const handleLanPull = async () => {
+    if (!lanUrl) { setLanInfo({ ...lanInfo, error: "Enter the server URL" }); return }
+    setLanInfo({ status: "syncing", url: lanUrl, error: null })
+    setLanConfig({ lastUrl: lanUrl })
+    const result = await pullFromLan(lanUrl)
+    setLanInfo(result)
+    if (!result.error) { showNotification("ProFlow", "✅ Data pulled from other device"); window.location.reload() }
   }
 
-  const handleClearSync = () => {
-    clearSyncConfig()
-    setSyncToken("")
-    setSyncRepo("")
-    setSyncAuto(false)
-    setSyncInfo({ lastSync: null, error: null, status: "idle" })
-    showNotification("ProFlow", "Sync settings cleared")
+  const handleLanPush = async () => {
+    if (!lanUrl) { setLanInfo({ ...lanInfo, error: "Enter the server URL" }); return }
+    setLanInfo({ status: "syncing", url: lanUrl, error: null })
+    setLanConfig({ lastUrl: lanUrl })
+    const result = await pushToLan(lanUrl)
+    setLanInfo(result)
+    if (!result.error) showNotification("ProFlow", "✅ Data pushed to other device")
   }
 
   return (
@@ -553,114 +550,98 @@ export function SettingsView() {
         )}
       </Card>
 
-      {/* GitHub Sync */}
+      {/* LAN Sync */}
       <Card className="mt-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Cloud sync
+              LAN sync
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Sync data between devices using a private GitHub repo. Free, no signup needed.
+              Sync between devices on the same WiFi. No internet needed.
             </p>
           </div>
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-            <Cloud className="size-4.5" />
+            <Wifi className="size-4.5" />
           </span>
         </div>
 
         <div className="mt-4 space-y-3">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">GitHub token</label>
-            <input
-              type="password"
-              placeholder="ghp_xxxxxxxxxxxx"
-              value={syncToken}
-              onChange={(e) => setSyncToken(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-secondary/50 px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-            <p className="mt-1 text-[10px] text-muted-foreground">
-              Create one at <span className="text-primary">github.com/settings/tokens</span> with <span className="font-medium text-foreground">repo</span> scope.
+          {/* Server mode (Desktop) */}
+          <div className="rounded-lg border border-border bg-secondary/20 p-3">
+            <p className="text-xs font-medium text-foreground mb-2">This device as server</p>
+            <p className="text-[10px] text-muted-foreground mb-2">
+              Start a server so other devices can connect and sync data.
             </p>
+            {lanInfo.status === "running" && lanInfo.url ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 rounded-lg bg-background/60 p-2">
+                  <Wifi className="size-3.5 text-success" />
+                  <span className="text-xs font-mono text-foreground break-all">{lanInfo.url}</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Open this URL on your phone's browser to sync. Both devices must be on the same WiFi.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleStopServer}
+                  className="flex items-center gap-1.5 rounded-lg border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger/20"
+                >
+                  Stop server
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleStartServer}
+                disabled={lanInfo.status === "starting"}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {lanInfo.status === "starting" ? <Loader2 className="size-3.5 animate-spin" /> : <Wifi className="size-3.5" />}
+                Start server
+              </button>
+            )}
           </div>
 
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Repository</label>
+          {/* Client mode (any device) */}
+          <div className="rounded-lg border border-border bg-secondary/20 p-3">
+            <p className="text-xs font-medium text-foreground mb-2">Connect to another device</p>
+            <p className="text-[10px] text-muted-foreground mb-2">
+              Enter the URL shown on the other device's ProFlow settings.
+            </p>
             <input
               type="text"
-              placeholder="username/proflow-sync"
-              value={syncRepo}
-              onChange={(e) => setSyncRepo(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-secondary/50 px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
+              placeholder="http://192.168.x.x:7777"
+              value={lanUrl}
+              onChange={(e) => setLanUrl(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background/60 px-3 py-2 text-sm font-mono outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
-            <p className="mt-1 text-[10px] text-muted-foreground">
-              Create an empty private repo on GitHub, then enter <span className="font-medium text-foreground">owner/repo-name</span>.
-            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleLanPull}
+                disabled={!lanUrl || lanInfo.status === "syncing"}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                {lanInfo.status === "syncing" ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                Pull data
+              </button>
+              <button
+                type="button"
+                onClick={handleLanPush}
+                disabled={!lanUrl || lanInfo.status === "syncing"}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {lanInfo.status === "syncing" ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
+                Push data
+              </button>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handleSyncSave}
-              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-            >
-              Save settings
-            </button>
-            <button
-              type="button"
-              onClick={handlePush}
-              disabled={!syncToken || !syncRepo || syncInfo.status === "pushing"}
-              className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-            >
-              {syncInfo.status === "pushing" ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
-              Push
-            </button>
-            <button
-              type="button"
-              onClick={handlePull}
-              disabled={!syncToken || !syncRepo || syncInfo.status === "pulling"}
-              className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
-            >
-              {syncInfo.status === "pulling" ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
-              Pull
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => { const next = !syncAuto; setSyncAuto(next); setSyncConfig({ autoSync: next }) }}
-              className={cn(
-                "relative h-5 w-9 rounded-full transition-colors",
-                syncAuto ? "bg-primary" : "bg-muted",
-              )}
-            >
-              <span className={cn(
-                "absolute top-0.5 left-0.5 size-4 rounded-full bg-white transition-transform",
-                syncAuto && "translate-x-4",
-              )} />
-            </button>
-            <span className="text-xs text-muted-foreground">Auto-sync on startup</span>
-          </div>
-
-          {syncInfo.lastSync && (
-            <p className="text-[10px] text-muted-foreground">
-              Last synced: {new Date(syncInfo.lastSync).toLocaleString()}
-            </p>
-          )}
-          {syncInfo.error && (
+          {lanInfo.error && (
             <p className="rounded-lg border border-danger/30 bg-danger/5 p-2 text-xs text-danger">
-              {syncInfo.error}
+              {lanInfo.error}
             </p>
-          )}
-          {(syncToken || syncRepo) && (
-            <button
-              type="button"
-              onClick={handleClearSync}
-              className="text-[10px] text-muted-foreground hover:text-danger"
-            >
-              Clear sync settings
-            </button>
           )}
         </div>
       </Card>

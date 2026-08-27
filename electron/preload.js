@@ -17,4 +17,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   autoSaveBackup: (p) => ipcRenderer.invoke("backup:autoSave", p),
   showCrashLog: () => ipcRenderer.invoke("show-crash-log"),
   getCrashLogPath: () => ipcRenderer.invoke("get-crash-log-path"),
+  startLanSync: (opts) => ipcRenderer.invoke("lan-sync:start", opts),
+  stopLanSync: () => ipcRenderer.invoke("lan-sync:stop"),
 });
