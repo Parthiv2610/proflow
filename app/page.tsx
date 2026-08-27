@@ -17,6 +17,7 @@ import { TasksView } from "@/components/proflow/views/tasks-view"
 import { ChecklistsView } from "@/components/proflow/views/checklists-view"
 import { ProFlowProvider, useStore, SIDEBAR_DRAWER_MAX } from "@/components/proflow/store"
 import { hasStoredData } from "@/lib/auto-backup"
+import { getSyncConfig, pullFromGitHub } from "@/lib/github-sync"
 import { Sidebar } from "@/components/proflow/sidebar"
 import { Topbar } from "@/components/proflow/topbar"
 import { BottomTabs } from "@/components/proflow/bottom-tabs"
@@ -64,6 +65,16 @@ function Workspace() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
+  }, [])
+
+  // Auto-sync: pull from GitHub on startup if enabled
+  useEffect(() => {
+    const cfg = getSyncConfig()
+    if (cfg.autoSync && cfg.token && cfg.repo) {
+      pullFromGitHub(cfg.token, cfg.repo).then((r) => {
+        if (!r.error && r.status === "synced") window.location.reload()
+      })
+    }
   }, [])
 
   // Close the sidebar drawer when navigating — but only in drawer mode (small windows).
