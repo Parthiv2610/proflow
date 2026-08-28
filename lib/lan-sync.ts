@@ -72,7 +72,7 @@ export async function startLanServer(): Promise<LanSyncInfo> {
       return {
         status: "error",
         url: null,
-        error: "LAN sync requires the desktop app",
+        error: "LAN server requires the desktop (Electron) app — not available on mobile or web",
       }
     }
 
@@ -107,27 +107,40 @@ export async function stopLanServer(): Promise<void> {
 
 export async function pullFromLan(serverUrl: string): Promise<LanSyncInfo> {
   try {
-    const res = await fetch(`${serverUrl}/sync`)
-    if (!res.ok) throw new Error(`Server returned ${res.status}`)
+    const url = serverUrl.replace(/\/+$/, "") + "/sync"
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) })
+    if (!res.ok) throw new Error(`Server returned HTTP ${res.status} ${res.statusText}`)
     const json = await res.json()
     if (json.data) applyData(json.data)
     return { status: "done", url: serverUrl, error: null }
   } catch (e: any) {
-    return { status: "error", url: serverUrl, error: e.message || "Failed to connect" }
+    let msg = e.message || "Failed to connect"
+    if (msg.includes("Failed to fetch") || msg.includes("NetworkError"))
+      msg = `Cannot reach server at ${serverUrl} — make sure both devices are on the same WiFi and the server is running`
+    else if (msg.includes("timeout"))
+      msg = `Connection timed out — server at ${serverUrl} may be unreachable`
+    return { status: "error", url: serverUrl, error: msg }
   }
 }
 
 export async function pushToLan(serverUrl: string): Promise<LanSyncInfo> {
   try {
-    const res = await fetch(`${serverUrl}/sync`, {
+    const url = serverUrl.replace(/\/+$/, "") + "/sync"
+    const res = await fetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ data: collectAllData() }),
+      signal: AbortSignal.timeout(10000),
     })
-    if (!res.ok) throw new Error(`Server returned ${res.status}`)
+    if (!res.ok) throw new Error(`Server returned HTTP ${res.status} ${res.statusText}`)
     return { status: "done", url: serverUrl, error: null }
   } catch (e: any) {
-    return { status: "error", url: serverUrl, error: e.message || "Failed to connect" }
+    let msg = e.message || "Failed to connect"
+    if (msg.includes("Failed to fetch") || msg.includes("NetworkError"))
+      msg = `Cannot reach server at ${serverUrl} — make sure both devices are on the same WiFi and the server is running`
+    else if (msg.includes("timeout"))
+      msg = `Connection timed out — server at ${serverUrl} may be unreachable`
+    return { status: "error", url: serverUrl, error: msg }
   }
 }
 

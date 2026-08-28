@@ -639,9 +639,15 @@ export function SettingsView() {
           </div>
 
           {lanInfo.error && (
-            <p className="rounded-lg border border-danger/30 bg-danger/5 p-2 text-xs text-danger">
-              {lanInfo.error}
-            </p>
+            <div className="rounded-lg border border-danger/30 bg-danger/5 p-3">
+              <p className="text-xs font-semibold text-danger mb-1">Connection error</p>
+              <p className="text-xs text-danger/80 break-all">{lanInfo.error}</p>
+            </div>
+          )}
+          {lanInfo.status === "done" && (
+            <div className="rounded-lg border border-success/30 bg-success/5 p-3">
+              <p className="text-xs font-semibold text-success">✅ Sync complete</p>
+            </div>
           )}
         </div>
       </Card>
