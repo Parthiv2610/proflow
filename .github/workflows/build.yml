@@ -85,12 +85,25 @@ jobs:
         run: |
           rm -rf android/app/src/main/assets/public
           cp -r out android/app/src/main/assets/public
-          echo 'Copied out/ to Android assets (skipped cap sync to preserve build config)'
+          echo 'Copied out/ to Android assets'
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
+
+      - name: Debug environment
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          ls "$ANDROID_HOME/platforms/" 2>/dev/null || echo "No platforms dir"
+          ls -la app/proflow-release.keystore 2>/dev/null || echo "Keystore missing"
+          cat local.properties 2>/dev/null || echo "No local.properties"
+
+      - name: Create local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          cat android/local.properties
 
       - name: Build APK
         working-directory: android
@@ -101,9 +114,10 @@ jobs:
           ANDROID_KEY_PASSWORD: ProFlowRelease2025
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tail -100
 
       - name: Upload APK
+        if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
