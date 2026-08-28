@@ -82,15 +82,10 @@ jobs:
         run: test -f out/index.html && echo "OK"
 
       - name: Sync Android assets
-        run: pnpm exec cap sync android
-
-      - name: Restore signing config (cap sync may overwrite build.gradle)
-        shell: bash
         run: |
-          if ! grep -q 'signingConfigs' android/app/build.gradle; then
-            echo 'No signing config found — cap sync overwrote it. Restoring...'
-            git checkout HEAD -- android/app/build.gradle
-          fi
+          rm -rf android/app/src/main/assets/public
+          cp -r out android/app/src/main/assets/public
+          echo 'Copied out/ to Android assets (skipped cap sync to preserve build config)'
 
       - uses: actions/setup-java@v4
         with:
