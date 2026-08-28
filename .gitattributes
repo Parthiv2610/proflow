@@ -16,3 +16,6 @@
 *.ico binary
 *.jpg binary
 *.woff2 binary
+*.keystore binary
+*.jar binary
+*.apk binary

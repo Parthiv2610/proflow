@@ -84,6 +84,14 @@ jobs:
       - name: Sync Android assets
         run: pnpm exec cap sync android
 
+      - name: Restore signing config (cap sync may overwrite build.gradle)
+        shell: bash
+        run: |
+          if ! grep -q 'signingConfigs' android/app/build.gradle; then
+            echo 'No signing config found — cap sync overwrote it. Restoring...'
+            git checkout HEAD -- android/app/build.gradle
+          fi
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -91,6 +99,11 @@ jobs:
 
       - name: Build APK
         working-directory: android
+        env:
+          ANDROID_KEYSTORE_FILE: app/proflow-release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ProFlowRelease2025
+          ANDROID_KEY_ALIAS: proflow
+          ANDROID_KEY_PASSWORD: ProFlowRelease2025
         run: |
           chmod +x ./gradlew
           ./gradlew assembleRelease --no-daemon
