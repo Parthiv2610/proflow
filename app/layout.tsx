@@ -27,6 +27,18 @@ export default function RootLayout({
   return (
     <html lang="en" className={`dark ${geistSans.variable} ${geistMono.variable}`}>
       <body className="bg-background font-sans antialiased">
+        <script dangerouslySetInnerHTML={{ __html: `
+          window.onerror = function(msg, src, line, col, err) {
+            var e = { message: msg, source: src, line: line, col: col, stack: err && err.stack, time: new Date().toISOString() };
+            try { localStorage.setItem('proflow-last-error', JSON.stringify(e)); } catch(x) {}
+          };
+          window.onunhandledrejection = function(ev) {
+            var reason = ev.reason || ev;
+            var msg = reason.message || String(reason);
+            var e = { message: msg, stack: reason.stack && reason.stack.slice(0,500), time: new Date().toISOString() };
+            try { localStorage.setItem('proflow-last-error', JSON.stringify(e)); } catch(x) {}
+          };
+        ` }} />
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

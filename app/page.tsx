@@ -24,6 +24,7 @@ import { BottomTabs } from "@/components/proflow/bottom-tabs"
 import { WelcomeTour } from "@/components/proflow/welcome-tour"
 import { UpdateBanner } from "@/components/proflow/update-banner"
 import { MilestonePopup } from "@/components/proflow/milestone-popup"
+import { ErrorBoundary } from "@/components/proflow/error-boundary"
 
 function Workspace() {
   const { view, focusMode, sidebarOpen, closeSidebar } = useStore()
@@ -211,8 +212,10 @@ function FocusModeExit() {
 
 export default function Page() {
   return (
-    <ProFlowProvider>
-      <Workspace />
-    </ProFlowProvider>
+    <ErrorBoundary>
+      <ProFlowProvider>
+        <Workspace />
+      </ProFlowProvider>
+    </ErrorBoundary>
   )
 }
