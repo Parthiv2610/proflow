@@ -8,6 +8,7 @@ import {
   Code2,
   Eye,
   FileUp,
+  GripVertical,
   Heading1,
   ImagePlus,
   Italic,
@@ -122,6 +123,9 @@ export function NotesView() {
 
   // Page-list search
   const [query, setQuery] = useState("")
+  // Drag-and-drop reorder state
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
 
   // Inline canvas state — one draft for the currently open page.
   const [currentId, setCurrentId] = useState<string | null>(null)
@@ -451,23 +455,71 @@ export function NotesView() {
 
   const wordCount = draft.body.trim() ? draft.body.trim().split(/\s+/).length : 0
 
-  // One page-list row (defined here so it can open the page / highlight it).
+  // Drag-and-drop reorder: move note from dragId to dropId position
+  const reorderNotes = (fromId: string, toId: string) => {
+    const ids = viewNotes.map((n) => n.id)
+    const fromIdx = ids.indexOf(fromId)
+    const toIdx = ids.indexOf(toId)
+    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return
+    const reordered = [...ids]
+    reordered.splice(fromIdx, 1)
+    reordered.splice(toIdx, 0, fromId)
+    // Rebuild the full notes array preserving order of visible notes
+    const newNotes = [...notes]
+    const visSet = new Set(ids)
+    const nonVis = newNotes.filter((n) => !visSet.has(n.id))
+    const visNotes = reordered.map((id) => newNotes.find((n) => n.id === id)!)
+    setRawNotes([...visNotes, ...nonVis])
+  }
+
+  // One page-list row (draggable, with grip handle).
   const pageItem = (n: Note) => (
-    <button
+    <div
       key={n.id}
-      type="button"
-      onClick={() => openPage(n)}
+      draggable
+      onDragStart={(e) => {
+        setDragId(n.id)
+        e.dataTransfer.effectAllowed = "move"
+        // Needed for Firefox
+        e.dataTransfer.setData("text/plain", n.id)
+      }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = "move"
+        setDragOverId(n.id)
+      }}
+      onDragLeave={() => setDragOverId(null)}
+      onDrop={(e) => {
+        e.preventDefault()
+        if (dragId && dragId !== n.id) reorderNotes(dragId, n.id)
+        setDragId(null)
+        setDragOverId(null)
+      }}
+      onDragEnd={() => { setDragId(null); setDragOverId(null) }}
       className={cn(
-        "flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors",
-        currentId === n.id ? "bg-primary/10 text-foreground" : "hover:bg-secondary",
+        "group/drag flex w-full items-stretch gap-1 rounded-lg transition-all",
+        dragOverId === n.id && dragId !== n.id ? "border-t-2 border-primary" : "",
+        dragId === n.id ? "opacity-40 scale-[0.97]" : "",
       )}
     >
-      <span className="flex items-center gap-1.5">
-        {n.pinned && <Pin className="size-3 shrink-0 fill-primary text-primary" />}
-        <span className="truncate text-sm font-medium">{n.title}</span>
+      <span className="flex w-5 shrink-0 items-center justify-center opacity-0 group-hover/drag:opacity-40 cursor-grab active:cursor-grabbing transition-opacity">
+        <GripVertical className="size-3 text-muted-foreground" />
       </span>
-      <span className="truncate text-[11px] text-muted-foreground">{excerpt(n)}</span>
-    </button>
+      <button
+        type="button"
+        onClick={() => openPage(n)}
+        className={cn(
+          "flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors",
+          currentId === n.id ? "bg-primary/10 text-foreground" : "hover:bg-secondary",
+        )}
+      >
+        <span className="flex items-center gap-1.5">
+          {n.pinned && <Pin className="size-3 shrink-0 fill-primary text-primary" />}
+          <span className="truncate text-sm font-medium">{n.title}</span>
+        </span>
+        <span className="truncate text-[11px] text-muted-foreground">{excerpt(n)}</span>
+      </button>
+    </div>
   )
 
   return (
