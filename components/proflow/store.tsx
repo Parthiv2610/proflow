@@ -577,6 +577,14 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
   const [completedTasks, setCompletedTasks] = useLocalStorage<CompletedTask[]>("completedTasks", [])
   const [checklists, setChecklists] = useLocalStorage<Checklist[]>("checklists", [])
   const [habits, setRawHabits] = useLocalStorage<Habit[]>("habits", initialHabits)
+
+  // Migration: ensure all habits have a `week` array (old habits may lack it)
+  useEffect(() => {
+    const patched = habits.map((h) =>
+      h.week ? h : { ...h, week: [true, true, true, true, true, true, false] },
+    )
+    if (patched.some((h, i) => h !== habits[i])) setRawHabits(patched)
+  }, [])
   const [goals, setRawGoals] = useLocalStorage<Goal[]>("goals", initialGoals)
   const [events, setRawEvents] = useLocalStorage<EventItem[]>("events", initialEvents)
   const [notes, setRawNotes] = useLocalStorage<Note[]>("notes", initialNotes)
@@ -955,7 +963,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       while (safety-- > 0) {
         const key = dateKey(cursor)
         const dayIdx = (cursor.getDay() + 6) % 7
-        if (habit.week[dayIdx]) {
+        if (habit.week?.[dayIdx]) {
           if (completedSet.has(key)) streak++
           else break // missed a scheduled day → streak broken here
         }
@@ -1074,7 +1082,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       gapDays.forEach((d, i) => {
         // week[] is Monday-first (M,T,W,T,F,S,S) but getDay() is Sunday-first
         // (0=Sun…6=Sat) — shift so both index 0 = Monday.
-        if (!h.week[(d.getDay() + 6) % 7]) return // habit not scheduled that weekday
+        if (!h.week?.[(d.getDay() + 6) % 7]) return // habit not scheduled that weekday
         // The last active day is credited if the user had marked it done.
         if (i === 0) {
           if (!h.doneToday) missedDays.push(dateKey(d))
@@ -2328,7 +2336,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
     // Push habit list for interactive habits widget (id|name|done|streak)
     const todayIdx = (new Date().getDay() + 6) % 7
     const habitsData = habits
-      .filter((h) => h.week[todayIdx])
+      .filter((h) => h.week?.[todayIdx])
       .map((h) => `${h.id}|${h.name}|${h.doneToday}|${h.streak}`)
       .join("\n")
     updateHabitWidget(habitsData)
