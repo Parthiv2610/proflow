@@ -609,6 +609,11 @@ export function SettingsView() {
             <p className="text-[10px] text-muted-foreground mb-2">
               Enter the URL shown on the other device's ProFlow settings.
             </p>
+            {isCapacitor() && (
+              <p className="text-[10px] text-warning mb-2 rounded bg-warning/10 p-1.5">
+                💡 On mobile, use the PC's LAN IP (e.g. http://192.168.1.5:7777). Do NOT use localhost.
+              </p>
+            )}
             <input
               type="text"
               placeholder="http://192.168.x.x:7777"
@@ -617,6 +622,25 @@ export function SettingsView() {
               className="w-full rounded-lg border border-border bg-background/60 px-3 py-2 text-sm font-mono outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
             <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!lanUrl) return
+                  try {
+                    const res = await fetch(lanUrl.replace(/\/+$/, ""), { signal: AbortSignal.timeout(5000) })
+                    const text = await res.text()
+                    setLanInfo({ status: "done", url: lanUrl, error: null })
+                    alert("✅ Server is reachable!\n\nResponse: " + text.slice(0, 200))
+                  } catch (e: any) {
+                    setLanInfo({ status: "error", url: lanUrl, error: "Cannot reach " + lanUrl + " — " + (e.message || "unknown error") })
+                  }
+                }}
+                disabled={!lanUrl || lanInfo.status === "syncing"}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                <Wifi className="size-3.5" />
+                Test
+              </button>
               <button
                 type="button"
                 onClick={handleLanPull}

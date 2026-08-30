@@ -115,10 +115,7 @@ export async function pullFromLan(serverUrl: string): Promise<LanSyncInfo> {
     return { status: "done", url: serverUrl, error: null }
   } catch (e: any) {
     let msg = e.message || "Failed to connect"
-    if (msg.includes("Failed to fetch") || msg.includes("NetworkError"))
-      msg = `Cannot reach server at ${serverUrl} — make sure both devices are on the same WiFi and the server is running`
-    else if (msg.includes("timeout"))
-      msg = `Connection timed out — server at ${serverUrl} may be unreachable`
+    msg = explainFetchError(msg, serverUrl)
     return { status: "error", url: serverUrl, error: msg }
   }
 }
@@ -136,12 +133,22 @@ export async function pushToLan(serverUrl: string): Promise<LanSyncInfo> {
     return { status: "done", url: serverUrl, error: null }
   } catch (e: any) {
     let msg = e.message || "Failed to connect"
-    if (msg.includes("Failed to fetch") || msg.includes("NetworkError"))
-      msg = `Cannot reach server at ${serverUrl} — make sure both devices are on the same WiFi and the server is running`
-    else if (msg.includes("timeout"))
-      msg = `Connection timed out — server at ${serverUrl} may be unreachable`
+    msg = explainFetchError(msg, serverUrl)
     return { status: "error", url: serverUrl, error: msg }
   }
+}
+
+function explainFetchError(msg: string, serverUrl: string): string {
+  if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+    // Check if this looks like a localhost URL (common mistake on mobile)
+    if (serverUrl.includes("localhost") || serverUrl.includes("127.0.0.1")) {
+      return `Cannot reach ${serverUrl} — on mobile, use the PC's LAN IP (e.g. http://192.168.1.x:7777), NOT localhost. Both devices must be on the same WiFi.`
+    }
+    return `Cannot reach server at ${serverUrl}.\n\nTroubleshooting:\n1. Make sure both devices are on the same WiFi network\n2. Make sure the ProFlow server is running on the other device\n3. Try opening ${serverUrl} in your phone's browser — if it shows text, the server is reachable\n4. Check if your router has "AP isolation" or "client isolation" enabled (disable it)`
+  }
+  if (msg.includes("timeout"))
+    return `Connection timed out — server at ${serverUrl} may be unreachable. Try opening the URL in your phone's browser first.`
+  return msg
 }
 
 export function getLanConfig() {
