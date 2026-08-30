@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef } from "react"
 import { Play, Pause, SkipForward } from "lucide-react"
 import { useStore } from "@/components/proflow/store"
 import { cn } from "@/lib/utils"
@@ -12,10 +12,12 @@ function formatTime(s: number) {
 }
 
 export function FloatingTimer() {
-  const { running, secondsLeft, totalSeconds, mode, startTimer, pauseTimer, skipTimer, view } = useStore()
+  const { running, secondsLeft, totalSeconds, mode, startTimer, pauseTimer, skipTimer, view, prefs, togglePref } = useStore()
   const [position, setPosition] = useState({ x: 16, y: 80 })
   const [dragging, setDragging] = useState(false)
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null)
+
+  const autoBreak = prefs.some((p) => p.id === "autoBreaks" && p.on)
 
   // Don't show if timer isn't running or user is on the focus view
   if (!running || view === "focus") return null
@@ -34,7 +36,7 @@ export function FloatingTimer() {
     const dy = e.clientY - dragRef.current.startY
     setPosition({
       x: Math.max(0, Math.min(window.innerWidth - 200, dragRef.current.origX + dx)),
-      y: Math.max(0, Math.min(window.innerHeight - 80, dragRef.current.origY + dy)),
+      y: Math.max(0, Math.min(window.innerHeight - 100, dragRef.current.origY + dy)),
     })
   }
 
@@ -46,7 +48,7 @@ export function FloatingTimer() {
   return (
     <div
       className={cn(
-        "fixed z-[90] flex items-center gap-2 rounded-xl border border-border bg-background/95 shadow-2xl backdrop-blur-md select-none",
+        "fixed z-[90] flex flex-col rounded-xl border border-border bg-background/95 shadow-2xl backdrop-blur-md select-none",
         dragging ? "cursor-grabbing" : "cursor-grab",
       )}
       style={{ left: position.x, top: position.y, width: 180 }}
@@ -65,6 +67,7 @@ export function FloatingTimer() {
         />
       </div>
 
+      {/* Main row: mode + time + controls */}
       <div className="relative flex items-center gap-2 px-3 py-2 w-full">
         {/* Mode indicator */}
         <div className={cn(
@@ -96,6 +99,27 @@ export function FloatingTimer() {
             <SkipForward className="size-3" />
           </button>
         </div>
+      </div>
+
+      {/* Auto-break toggle row */}
+      <div
+        className="relative flex items-center justify-between px-3 py-1.5 border-t border-border/50"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <span className="text-[10px] text-muted-foreground">Auto-break</span>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); togglePref("autoBreaks") }}
+          className={cn(
+            "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full transition-colors",
+            autoBreak ? "bg-primary" : "bg-muted",
+          )}
+        >
+          <span className={cn(
+            "inline-block h-3 w-3 translate-y-0.5 rounded-full bg-white shadow transition-transform",
+            autoBreak ? "translate-x-3.5" : "translate-x-0.5",
+          )} />
+        </button>
       </div>
     </div>
   )

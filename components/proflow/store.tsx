@@ -1499,10 +1499,15 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
         mode === "focus" ? "Great work — time for a break!" : "Ready for another focus session?",
       )
     }
-    // Always auto-advance: focus → break → focus
-    if (mode === "focus") setPomodoro((p) => (p >= totalPomodoros ? 1 : p + 1))
-    applyMode(mode === "focus" ? "break" : "focus")
-    setRunning(true)
+    const autoBreak = prefs.some((p) => p.id === "autoBreaks" && p.on)
+    if (autoBreak) {
+      // Auto-advance to the next phase and keep running
+      if (mode === "focus") setPomodoro((p) => (p >= totalPomodoros ? 1 : p + 1))
+      applyMode(mode === "focus" ? "break" : "focus")
+      setRunning(true)
+    } else {
+      setRunning(false)
+    }
   }, [secondsLeft, running, mode, prefs, applyMode, totalPomodoros, recordFocusSession, clearPersistedTimer])
 
   // When the timer is idle, reflect the configured durations immediately.
