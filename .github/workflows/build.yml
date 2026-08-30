@@ -103,7 +103,7 @@ jobs:
       - name: Build APK
         working-directory: android
         env:
-          ANDROID_KEYSTORE_FILE: app/proflow-release.keystore
+          ANDROID_KEYSTORE_FILE: proflow-release.keystore
           ANDROID_KEYSTORE_PASSWORD: ProFlowRelease2025
           ANDROID_KEY_ALIAS: proflow
           ANDROID_KEY_PASSWORD: ProFlowRelease2025
