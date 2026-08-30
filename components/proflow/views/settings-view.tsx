@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   Camera,
   Trash2,
@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils"
 import { useUpdate } from "@/lib/use-update"
 import { isCapacitor } from "@/lib/lan-sync"
 import { showNotification } from "@/lib/notify"
-import { startLanServer, stopLanServer, pullFromLan, pushToLan, getLanConfig, setLanConfig, type LanSyncInfo } from "@/lib/lan-sync"
+import { startLanServer, stopLanServer, pullFromLan, pushToLan, getLanConfig, setLanConfig, startAutoSync, type LanSyncInfo } from "@/lib/lan-sync"
 import { Card, PageHeader } from "../ui"
 import { useStore, ACCENTS, ACHIEVEMENTS } from "../store"
 
@@ -78,6 +78,20 @@ export function SettingsView() {
   const lanCfg = getLanConfig()
   const [lanUrl, setLanUrl] = useState(lanCfg.lastUrl)
   const [lanInfo, setLanInfo] = useState<LanSyncInfo>({ status: "idle", url: null, error: null })
+  const [autoSync, setAutoSync] = useState(lanCfg.autoSync || false)
+
+  // Auto-sync effect: when enabled and URL is set, push data every 30s
+  useEffect(() => {
+    if (!autoSync || !lanUrl) return
+    const cleanup = startAutoSync(lanUrl, (result) => {
+      if (result.status === "error") {
+        setLanInfo(result)
+      } else if (result.status === "done") {
+        setLanInfo({ status: "done", url: lanUrl, error: null })
+      }
+    })
+    return cleanup
+  }, [autoSync, lanUrl])
   // Local string state so the user can clear the field while typing without the
   // controlled value snapping back to "0" on every keystroke.
 
@@ -560,6 +574,9 @@ export function SettingsView() {
             <p className="mt-1 text-sm text-muted-foreground">
               Sync between devices on the same WiFi. No internet needed.
             </p>
+            <p className="mt-1 text-[10px] text-success/80">
+              ✨ Additive sync — new items are merged, existing data is never deleted.
+            </p>
           </div>
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
             <Wifi className="size-4.5" />
@@ -660,6 +677,30 @@ export function SettingsView() {
                 Push data
               </button>
             </div>
+          </div>
+
+          {/* Auto-sync toggle */}
+          <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/20 p-3">
+            <div>
+              <p className="text-xs font-medium text-foreground">Auto-sync to desktop</p>
+              <p className="text-[10px] text-muted-foreground">
+                {autoSync
+                  ? "Pushing changes every 30s. New tasks, habits, etc. appear on desktop."
+                  : "Automatically push new items to the desktop server."
+                }
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !autoSync
+                setAutoSync(next)
+                setLanConfig({ autoSync: next })
+              }}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors ${autoSync ? "bg-primary" : "bg-muted"}`}
+            >
+              <span className={`inline-block h-4 w-4 translate-y-0.5 rounded-full bg-white shadow transition-transform ${autoSync ? "translate-x-4" : "translate-x-0.5"}`} />
+            </button>
           </div>
 
           {lanInfo.error && (

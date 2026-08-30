@@ -236,7 +236,7 @@ function startLanHttpServer(port, data) {
             try {
               const parsed = JSON.parse(body);
               if (parsed.data && typeof parsed.data === "object") {
-                lanData = parsed.data;
+                lanData = additiveMergeServer(lanData, parsed.data);
                 // Also write to the renderer's localStorage via window
                 if (mainWindow && !mainWindow.isDestroyed()) {
                   mainWindow.webContents.executeJavaScript(
@@ -273,6 +273,43 @@ function startLanHttpServer(port, data) {
 }
 
 const applyDataStr = `function(d){for(var k in d){try{localStorage.setItem('proflow-'+k,JSON.stringify(d[k]))}catch(e){}}}`;
+
+/**
+ * Additive merge: only ADDS new items from incoming data, never deletes.
+ * - Arrays: items with new IDs are added, existing are updated
+ * - Numbers: takes the higher value
+ * - Objects: new keys are added
+ */
+function additiveMergeServer(existing, incoming) {
+  const result = Object.assign({}, existing);
+  for (const key of Object.keys(incoming)) {
+    const incVal = incoming[key];
+    const curVal = result[key];
+    // Array of objects with id
+    if (Array.isArray(incVal) && incVal.length > 0 && typeof incVal[0] === 'object' && incVal[0] !== null && incVal[0].id) {
+      const curArr = Array.isArray(curVal) ? curVal : [];
+      const map = new Map(curArr.map(item => [item.id, item]));
+      let changed = false;
+      for (const item of incVal) {
+        if (!map.has(item.id)) { map.set(item.id, item); changed = true; }
+        else { map.set(item.id, Object.assign({}, map.get(item.id), item)); }
+      }
+      if (changed || incVal.length > curArr.length) result[key] = Array.from(map.values());
+    }
+    // Number — take higher
+    else if (typeof incVal === 'number' && typeof curVal === 'number') {
+      result[key] = Math.max(curVal, incVal);
+    }
+    // Object/Record — merge keys
+    else if (typeof incVal === 'object' && incVal !== null && !Array.isArray(incVal) && typeof curVal === 'object' && curVal !== null && !Array.isArray(curVal)) {
+      result[key] = Object.assign({}, curVal, incVal);
+    }
+    else {
+      result[key] = incVal;
+    }
+  }
+  return result;
+}
 
 function stopLanHttpServer() {
   return new Promise((resolve) => {

@@ -55,8 +55,96 @@ function collectAllData(): Record<string, unknown> {
   return data
 }
 
+/**
+ * Additive merge: only ADDS new items, never deletes.
+ * - Arrays: items with new IDs are added, existing items are updated
+ * - Numbers: takes the higher value
+ * - Objects: new keys are added
+ * - Everything else: overwritten (latest wins)
+ */
+function additiveMerge(
+  existing: Record<string, unknown>,
+  incoming: Record<string, unknown>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...existing }
+
+  for (const [key, incomingValue] of Object.entries(incoming)) {
+    const existingValue = result[key]
+
+    // Array of objects with id — additive merge by id
+    if (
+      Array.isArray(incomingValue) &&
+      incomingValue.length > 0 &&
+      typeof incomingValue[0] === "object" &&
+      incomingValue[0] !== null &&
+      "id" in (incomingValue[0] as any)
+    ) {
+      const existingArr = Array.isArray(existingValue) ? existingValue : []
+      const existingMap = new Map(existingArr.map((item: any) => [item.id, item]))
+      let changed = false
+      for (const item of incomingValue as any[]) {
+        if (!existingMap.has(item.id)) {
+          existingMap.set(item.id, item)
+          changed = true
+        } else {
+          // Update existing item (latest wins for fields)
+          existingMap.set(item.id, { ...existingMap.get(item.id), ...item })
+        }
+      }
+      if (changed || incomingValue.length > existingArr.length) {
+        result[key] = Array.from(existingMap.values())
+      }
+    }
+    // Number — take the higher value
+    else if (
+      typeof incomingValue === "number" &&
+      typeof existingValue === "number"
+    ) {
+      result[key] = Math.max(existingValue, incomingValue)
+    }
+    // Object/Record — merge keys (additive)
+    else if (
+      typeof incomingValue === "object" &&
+      incomingValue !== null &&
+      !Array.isArray(incomingValue) &&
+      typeof existingValue === "object" &&
+      existingValue !== null &&
+      !Array.isArray(existingValue)
+    ) {
+      result[key] = { ...(existingValue as any), ...(incomingValue as any) }
+    }
+    // Everything else — overwrite with latest
+    else {
+      result[key] = incomingValue
+    }
+  }
+
+  return result
+}
+
+/** Merge incoming data additively into localStorage — never deletes existing items. */
 function applyData(data: Record<string, unknown>) {
-  for (const [key, value] of Object.entries(data)) {
+  // Read current data from localStorage
+  const current: Record<string, unknown> = {}
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i)
+    if (k && k.startsWith("proflow-")) {
+      const raw = localStorage.getItem(k)
+      if (raw !== null) {
+        try {
+          current[k.slice("proflow-".length)] = JSON.parse(raw)
+        } catch {
+          current[k.slice("proflow-".length)] = raw
+        }
+      }
+    }
+  }
+
+  // Additive merge: incoming items are added, existing items are never removed
+  const merged = additiveMerge(current, data)
+
+  // Write merged data back
+  for (const [key, value] of Object.entries(merged)) {
     try {
       localStorage.setItem("proflow-" + key, JSON.stringify(value))
     } catch {}
@@ -155,10 +243,44 @@ export function getLanConfig() {
   return {
     lastUrl: localStorage.getItem("proflow-lan-lastUrl") || "",
     autoConnect: localStorage.getItem("proflow-lan-auto") === "true",
+    autoSync: localStorage.getItem("proflow-lan-autoSync") === "true",
   }
 }
 
-export function setLanConfig(config: { lastUrl?: string; autoConnect?: boolean }) {
+export function setLanConfig(config: { lastUrl?: string; autoConnect?: boolean; autoSync?: boolean }) {
   if (config.lastUrl !== undefined) localStorage.setItem("proflow-lan-lastUrl", config.lastUrl)
   if (config.autoConnect !== undefined) localStorage.setItem("proflow-lan-auto", String(config.autoConnect))
+  if (config.autoSync !== undefined) localStorage.setItem("proflow-lan-autoSync", String(config.autoSync))
+}
+
+/**
+ * Auto-sync: pushes local data to the server every 30 seconds.
+ * Call this in a useEffect. Returns a cleanup function.
+ */
+export function startAutoSync(
+  serverUrl: string,
+  onSync?: (result: LanSyncInfo) => void,
+): () => void {
+  if (!serverUrl) return () => {}
+
+  let stopped = false
+
+  const sync = async () => {
+    if (stopped) return
+    try {
+      const result = await pushToLan(serverUrl)
+      if (onSync && !stopped) onSync(result)
+    } catch {}
+  }
+
+  // Push immediately on start
+  sync()
+
+  // Then every 30 seconds
+  const interval = setInterval(sync, 30_000)
+
+  return () => {
+    stopped = true
+    clearInterval(interval)
+  }
 }
