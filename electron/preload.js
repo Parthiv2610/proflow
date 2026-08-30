@@ -31,4 +31,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   rollingLoad: () => ipcRenderer.invoke("backup:loadRolling"),
   // LAN sync: receive pushed data from server
   onLanPushed: (cb) => { const handler = (_e, data) => cb(data); ipcRenderer.on("lan-sync:pushed", handler); return () => ipcRenderer.removeListener("lan-sync:pushed", handler); },
+  // LAN sync: server asks renderer for fresh data
+  lanGetData: () => ipcRenderer.invoke("lan-sync:getData"),
+  lanSetDataHandler: (cb) => { const handler = (_e, opts) => cb(opts); ipcRenderer.on("lan-sync:wantData", handler); return () => ipcRenderer.removeListener("lan-sync:wantData", handler); },
 });

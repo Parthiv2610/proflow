@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
 const STORAGE_PREFIX = "proflow-"
 
@@ -39,6 +39,21 @@ export function useLocalStorage<T>(
     },
     [key],
   )
+
+  // Listen for LAN sync external updates — re-read from localStorage when data changes externally
+  // (dispatched by auto-sync pull in lan-sync.ts)
+  useEffect(() => {
+    const handler = () => {
+      try {
+        const raw = localStorage.getItem(STORAGE_PREFIX + key)
+        if (raw !== null) {
+          setStored(JSON.parse(raw) as T)
+        }
+      } catch {}
+    }
+    window.addEventListener("proflow:synced", handler)
+    return () => window.removeEventListener("proflow:synced", handler)
+  }, [key])
 
   return [stored, setValue]
 }

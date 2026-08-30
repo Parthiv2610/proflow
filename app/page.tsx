@@ -25,6 +25,7 @@ import { UpdateBanner } from "@/components/proflow/update-banner"
 import { MilestonePopup } from "@/components/proflow/milestone-popup"
 import { ErrorBoundary } from "@/components/proflow/error-boundary"
 import { FloatingTimer } from "@/components/proflow/floating-timer"
+import { startAutoSync, pullFromLan, getLanConfig } from "@/lib/lan-sync"
 import { BackupManager } from "@/components/proflow/backup-manager"
 
 function Workspace() {
@@ -69,50 +70,69 @@ function Workspace() {
     closeSidebar()
   }, [view, closeSidebar])
 
+  // Global LAN auto-sync — runs across all views (not just Settings)
+  useEffect(() => {
+    const cfg = getLanConfig()
+    if (!cfg.autoSync || !cfg.lastUrl) return
+    const cleanup = startAutoSync(cfg.lastUrl, () => {})
+    return cleanup
+  }, [])
+
   // LAN sync: listen for pushed data from the server (desktop receives data from phone)
   useEffect(() => {
     const api = (window as any).electronAPI
     if (!api?.onLanPushed) return
-    const unsub = api.onLanPushed((data: Record<string, unknown>) => {
+    const unsubPushed = api.onLanPushed((data: Record<string, unknown>) => {
       if (!data || typeof data !== "object") return
       // Additive merge into localStorage — never deletes
+      for (const [key, incoming] of Object.entries(data)) {
+        const k = "proflow-" + key
+        try {
+          const raw = localStorage.getItem(k)
+          if (raw) {
+            const existing = JSON.parse(raw)
+            // Array of objects with id — merge additively
+            if (Array.isArray(incoming) && incoming.length > 0 && typeof incoming[0] === "object" && incoming[0]?.id) {
+              const map = new Map(existing.map((it: any) => [it.id, it]))
+              for (const item of incoming) {
+                if (!map.has(item.id)) map.set(item.id, item)
+                else map.set(item.id, { ...map.get(item.id), ...item })
+              }
+              localStorage.setItem(k, JSON.stringify(Array.from(map.values())))
+            } else if (typeof incoming === "number" && typeof existing === "number") {
+              localStorage.setItem(k, String(Math.max(existing, incoming)))
+            } else {
+              localStorage.setItem(k, JSON.stringify(incoming))
+            }
+          } else {
+            localStorage.setItem(k, JSON.stringify(incoming))
+          }
+        } catch {}
+      }
+      window.location.reload()
+    })
+    return () => { if (typeof unsubPushed === "function") unsubPushed() }
+  }, [])
+
+  // LAN sync: server asks for fresh data — respond with current localStorage
+  useEffect(() => {
+    const api = (window as any).electronAPI
+    if (!api?.lanSetDataHandler) return
+    const unsubWant = api.lanSetDataHandler(() => {
+      // Collect all proflow-* keys from localStorage
+      const fresh: Record<string, unknown> = {}
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i)
         if (k && k.startsWith("proflow-")) {
           const raw = localStorage.getItem(k)
-          if (raw) {
-            try {
-              const existing = JSON.parse(raw)
-              const key = k.slice("proflow-".length)
-              if (key in data) {
-                const incoming = data[key]
-                // Array of objects with id — merge additively
-                if (Array.isArray(incoming) && incoming.length > 0 && typeof incoming[0] === "object" && incoming[0]?.id) {
-                  const map = new Map(existing.map((it: any) => [it.id, it]))
-                  for (const item of incoming) {
-                    if (!map.has(item.id)) map.set(item.id, item)
-                    else map.set(item.id, { ...map.get(item.id), ...item })
-                  }
-                  localStorage.setItem(k, JSON.stringify(Array.from(map.values())))
-                } else if (typeof incoming === "number" && typeof existing === "number") {
-                  localStorage.setItem(k, String(Math.max(existing, incoming)))
-                } else {
-                  localStorage.setItem(k, JSON.stringify(incoming))
-                }
-              }
-            } catch {}
+          if (raw !== null) {
+            try { fresh[k.slice("proflow-".length)] = JSON.parse(raw) } catch { fresh[k.slice("proflow-".length)] = raw }
           }
         }
       }
-      // Apply any brand-new keys from the incoming data
-      for (const [key, value] of Object.entries(data)) {
-        if (!localStorage.getItem("proflow-" + key)) {
-          try { localStorage.setItem("proflow-" + key, JSON.stringify(value)) } catch {}
-        }
-      }
-      window.location.reload()
+      api.lanGetData?.(fresh)
     })
-    return () => { if (typeof unsub === "function") unsub() }
+    return () => { if (typeof unsubWant === "function") unsubWant() }
   }, [])
 
   return (

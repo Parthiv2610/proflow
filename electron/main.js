@@ -222,10 +222,19 @@ function startLanHttpServer(port, data) {
           return;
         }
 
-        // GET /sync — client pulls data
+        // GET /sync — client pulls data (fetch fresh from renderer)
         if (req.method === "GET" && req.url === "/sync") {
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ data: lanData, syncedAt: new Date().toISOString() }));
+          requestFreshDataFromRenderer().then((freshData) => {
+            // Merge fresh renderer data into lanData
+            if (freshData && typeof freshData === "object") {
+              lanData = additiveMergeServer(lanData, freshData);
+            }
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ data: lanData, syncedAt: new Date().toISOString() }));
+          }).catch(() => {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ data: lanData, syncedAt: new Date().toISOString() }));
+          });
           return;
         }
 
@@ -355,6 +364,27 @@ ipcMain.handle("lan-sync:start", async (event, opts) => {
 });
 ipcMain.handle("lan-sync:stop", async () => {
   await stopLanHttpServer();
+  return { ok: true };
+});
+// LAN sync: renderer sends its data here so the server can return it on GET /sync
+ipcMain.handle("lan-sync:getData", async (event, data) => {
+  lanData = data || {};
+  return { ok: true };
+});
+// LAN sync: server requests fresh data from the renderer (returns a promise that resolves when renderer responds)
+let _lanDataResolve = null;
+ipcMain.on("lan-sync:wantData", () => {}); // placeholder
+function requestFreshDataFromRenderer() {
+  return new Promise((resolve) => {
+    if (!mainWindow || mainWindow.isDestroyed()) { resolve({}); return; }
+    _lanDataResolve = resolve;
+    mainWindow.webContents.send("lan-sync:wantData", {});
+    // Timeout after 2 seconds — fall back to cached data
+    setTimeout(() => { if (_lanDataResolve) { _lanDataResolve = null; resolve(lanData); } }, 2000);
+  });
+}
+ipcMain.handle("lan-sync:giveData", async (event, data) => {
+  if (_lanDataResolve) { _lanDataResolve(data || {}); _lanDataResolve = null; }
   return { ok: true };
 });
 ipcMain.handle("backup:autoSave", async (event, payload) => {

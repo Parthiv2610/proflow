@@ -149,6 +149,11 @@ function applyData(data: Record<string, unknown>) {
       localStorage.setItem("proflow-" + key, JSON.stringify(value))
     } catch {}
   }
+
+  // Notify React hooks to re-read from localStorage (for auto-sync pull)
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("proflow:synced"))
+  }
 }
 
 // ── Server side (Desktop / Electron) ──
@@ -254,7 +259,8 @@ export function setLanConfig(config: { lastUrl?: string; autoConnect?: boolean; 
 }
 
 /**
- * Auto-sync: pushes local data to the server every 30 seconds.
+ * Auto-sync: pushes local data to the server every 30 seconds,
+ * and pulls fresh data every 45 seconds (bidirectional).
  * Call this in a useEffect. Returns a cleanup function.
  */
 export function startAutoSync(
@@ -265,7 +271,8 @@ export function startAutoSync(
 
   let stopped = false
 
-  const sync = async () => {
+  // Push: send local data to server
+  const push = async () => {
     if (stopped) return
     try {
       const result = await pushToLan(serverUrl)
@@ -273,14 +280,26 @@ export function startAutoSync(
     } catch {}
   }
 
-  // Push immediately on start
-  sync()
+  // Pull: fetch data from server and apply locally
+  const pull = async () => {
+    if (stopped) return
+    try {
+      const result = await pullFromLan(serverUrl)
+      if (onSync && !stopped) onSync(result)
+    } catch {}
+  }
 
-  // Then every 30 seconds
-  const interval = setInterval(sync, 30_000)
+  // Push immediately, then pull shortly after
+  push()
+  setTimeout(() => { if (!stopped) pull() }, 5000)
+
+  // Push every 30s, pull every 45s (staggered so they don't collide)
+  const pushInterval = setInterval(push, 30_000)
+  const pullInterval = setInterval(pull, 45_000)
 
   return () => {
     stopped = true
-    clearInterval(interval)
+    clearInterval(pushInterval)
+    clearInterval(pullInterval)
   }
 }
