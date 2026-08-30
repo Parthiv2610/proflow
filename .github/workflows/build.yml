@@ -122,3 +122,6 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: android/app/build/outputs/apk/release/app-release.apk
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
