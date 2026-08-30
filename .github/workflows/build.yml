@@ -87,9 +87,6 @@ jobs:
           cp -r out android/app/src/main/assets/public
           echo 'Copied out/ to Android assets'
 
-      - name: Run Capacitor sync
-        run: npx cap sync android
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -100,6 +97,13 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
           cat android/local.properties
 
+      - name: Run Capacitor sync
+        run: npx cap sync android
+
+      - name: Verify signing config
+        run: |
+          grep -q 'ANDROID_KEYSTORE_FILE' android/app/build.gradle && echo "Signing config OK" || echo "WARNING: signing config missing after cap sync"
+
       - name: Build APK
         working-directory: android
         env:
@@ -109,14 +113,13 @@ jobs:
           ANDROID_KEY_PASSWORD: ProFlowRelease2025
         run: |
           chmod +x ./gradlew
-          set +o pipefail
-          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee /tmp/gradle.log | tail -100
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee /tmp/gradle.log
           RC=${PIPESTATUS[0]}
           echo "Gradle exit code: $RC"
           if [ $RC -ne 0 ]; then
-            echo "::error::Gradle build failed (exit code $RC)"
-            tail -50 /tmp/gradle.log
-            exit $RC
+            echo "::error::Gradle build failed"
+            tail -80 /tmp/gradle.log
+            exit 1
           fi
 
       - name: Find and upload APK
