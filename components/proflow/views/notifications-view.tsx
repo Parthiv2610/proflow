@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import { Bell, CheckCheck, ListTodo, CalendarDays, Flame, Sparkles, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useStore, type AppNotification } from "@/components/proflow/store"
@@ -21,6 +22,11 @@ const toneFor: Record<AppNotification["type"], string> = {
 
 export function NotificationsView() {
   const { notifications, markRead, markAllRead, deleteNotification, clearNotifications } = useStore()
+
+  // Mark all notifications as read when this view is opened
+  useEffect(() => {
+    markAllRead()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const unread = notifications.filter((n) => !n.read).length
 
   return (
