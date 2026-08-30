@@ -93,9 +93,7 @@ jobs:
           java-version: '21'
 
       - name: Create local.properties
-        run: |
-          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
-          cat android/local.properties
+        run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
       - name: Run Capacitor sync
         run: pnpm exec cap sync android
@@ -109,42 +107,17 @@ jobs:
           ANDROID_KEY_PASSWORD: ProFlowRelease2025
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee /tmp/gradle.log
-          RC=${PIPESTATUS[0]}
-          echo "Gradle exit code: $RC"
-          if [ $RC -ne 0 ]; then
-            echo "::error::Gradle build failed (exit $RC)"
-            # Output key lines as annotations
-            grep -i "error:\|FAILURE\|BUILD FAILED\|could not\|Cannot\|Exception" /tmp/gradle.log | head -30 | while read -r line; do
-              echo "::error::$line"
-            done
-            echo "=== LAST 50 LINES ==="
-            tail -50 /tmp/gradle.log
-            exit 1
-          fi
+          ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Upload Gradle log on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gradle-log
-          path: /tmp/gradle.log
-          if-no-files-found: warn
-
-      - name: Find and upload APK
+      - name: Upload APK to release
         if: success()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "=== Searching for APK ==="
           APK=$(find android -name '*.apk' -type f | head -1)
           if [ -z "$APK" ]; then
             echo "::error::No APK file found after Gradle build"
-            echo "=== Build output tree ==="
-            find android/app/build -type d 2>/dev/null | head -30
             exit 1
           fi
           echo "Found APK: $APK ($(du -h "$APK" | cut -f1))"
-          echo "=== Uploading to release ${{ github.ref_name }} ==="
           gh release upload "${{ github.ref_name }}" "$APK" --clobber
-          echo "Upload complete!"
