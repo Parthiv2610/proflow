@@ -133,8 +133,13 @@ jobs:
           RC=${PIPESTATUS[0]}
           echo "Gradle exit code: $RC"
           if [ $RC -ne 0 ]; then
-            echo "::error::Gradle build failed"
-            tail -80 /tmp/gradle.log
+            echo "::error::Gradle build failed (exit $RC)"
+            # Output key lines as annotations
+            grep -i "error:\|FAILURE\|BUILD FAILED\|could not\|Cannot\|Exception" /tmp/gradle.log | head -30 | while read -r line; do
+              echo "::error::$line"
+            done
+            echo "=== LAST 50 LINES ==="
+            tail -50 /tmp/gradle.log
             exit 1
           fi
 
