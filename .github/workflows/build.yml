@@ -106,7 +106,15 @@ jobs:
           ANDROID_KEY_PASSWORD: ProFlowRelease2025
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tail -100
+          set +o pipefail
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee /tmp/gradle.log | tail -100
+          RC=${PIPESTATUS[0]}
+          echo "Gradle exit code: $RC"
+          if [ $RC -ne 0 ]; then
+            echo "::error::Gradle build failed (exit code $RC)"
+            tail -50 /tmp/gradle.log
+            exit $RC
+          fi
 
       - name: Find and upload APK
         if: success()
