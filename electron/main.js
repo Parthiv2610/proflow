@@ -238,12 +238,10 @@ function startLanHttpServer(port, data) {
               const parsed = JSON.parse(body);
               if (parsed.data && typeof parsed.data === "object") {
                 lanData = additiveMergeServer(lanData, parsed.data);
-                // Also write to the renderer's localStorage via window
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                  mainWindow.webContents.executeJavaScript(
-                    `(${applyDataStr})(JSON.parse('${JSON.stringify(parsed.data).replace(/'/g, "\\'")}'))`
-                  );
-                }
+              // Also push to the renderer via IPC (safe, no string escaping issues)
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                try { mainWindow.webContents.send("lan-sync:pushed", parsed.data); } catch (_) {}
+              }
               }
               res.writeHead(200, { "Content-Type": "application/json" });
               res.end(JSON.stringify({ ok: true, syncedAt: new Date().toISOString() }));

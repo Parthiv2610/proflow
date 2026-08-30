@@ -29,4 +29,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Rolling backup (survives localStorage clears)
   rollingSave: (data) => ipcRenderer.invoke("backup:rollingSave", data),
   rollingLoad: () => ipcRenderer.invoke("backup:loadRolling"),
+  // LAN sync: receive pushed data from server
+  onLanPushed: (cb) => { ipcRenderer.on("lan-sync:pushed", (_e, data) => cb(data)); },
 });

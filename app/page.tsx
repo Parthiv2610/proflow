@@ -69,6 +69,52 @@ function Workspace() {
     closeSidebar()
   }, [view, closeSidebar])
 
+  // LAN sync: listen for pushed data from the server (desktop receives data from phone)
+  useEffect(() => {
+    const api = (window as any).electronAPI
+    if (!api?.onLanPushed) return
+    const unsub = api.onLanPushed((data: Record<string, unknown>) => {
+      if (!data || typeof data !== "object") return
+      // Additive merge into localStorage — never deletes
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k && k.startsWith("proflow-")) {
+          const raw = localStorage.getItem(k)
+          if (raw) {
+            try {
+              const existing = JSON.parse(raw)
+              const key = k.slice("proflow-".length)
+              if (key in data) {
+                const incoming = data[key]
+                // Array of objects with id — merge additively
+                if (Array.isArray(incoming) && incoming.length > 0 && typeof incoming[0] === "object" && incoming[0]?.id) {
+                  const map = new Map(existing.map((it: any) => [it.id, it]))
+                  for (const item of incoming) {
+                    if (!map.has(item.id)) map.set(item.id, item)
+                    else map.set(item.id, { ...map.get(item.id), ...item })
+                  }
+                  localStorage.setItem(k, JSON.stringify(Array.from(map.values())))
+                } else if (typeof incoming === "number" && typeof existing === "number") {
+                  localStorage.setItem(k, String(Math.max(existing, incoming)))
+                } else {
+                  localStorage.setItem(k, JSON.stringify(incoming))
+                }
+              }
+            } catch {}
+          }
+        }
+      }
+      // Apply any brand-new keys from the incoming data
+      for (const [key, value] of Object.entries(data)) {
+        if (!localStorage.getItem("proflow-" + key)) {
+          try { localStorage.setItem("proflow-" + key, JSON.stringify(value)) } catch {}
+        }
+      }
+      window.location.reload()
+    })
+    return () => { if (typeof unsub === "function") unsub() }
+  }, [])
+
   return (
     <div className="flex h-svh overflow-hidden bg-background text-foreground">
       {/* Desktop sidebar — inline and collapsible. Hidden below lg (drawer takes over),
