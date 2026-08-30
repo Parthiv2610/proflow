@@ -6,7 +6,7 @@ import { useStore } from "@/components/proflow/store"
 const isElectron = typeof window !== "undefined" && !!(window as any).electronAPI?.isElectron
 
 export function FloatingTimer() {
-  const { running, secondsLeft, totalSeconds, mode, prefs } = useStore()
+  const { running, secondsLeft, totalSeconds, mode, prefs, startTimer, pauseTimer, skipTimer, togglePref } = useStore()
   const autoBreak = prefs.some((p) => p.id === "autoBreaks" && p.on)
   const api = typeof window !== "undefined" ? (window as any).electronAPI : null
   const wasRunning = useRef(false)
@@ -37,11 +37,10 @@ export function FloatingTimer() {
   // Listen for controls from the native window
   useEffect(() => {
     if (!api) return
-    const { startTimer, pauseTimer, skipTimer, togglePref } = useStore.getState()
     api.onTimerToggle(() => { running ? pauseTimer() : startTimer() })
     api.onTimerSkip(() => { skipTimer() })
     api.onTimerToggleAutoBreak(() => { togglePref("autoBreaks") })
-  }, [api])
+  }, [api, running, startTimer, pauseTimer, skipTimer, togglePref])
 
   // Cleanup: hide native window on unmount
   useEffect(() => {
