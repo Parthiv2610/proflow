@@ -116,12 +116,20 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tail -100
 
-      - name: Upload APK
+      - name: Verify APK exists
         if: success()
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: android/app/build/outputs/apk/release/app-release.apk
-          fail_on_unmatched_files: false
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          if [ ! -f "$APK" ]; then
+            echo "APK not found at $APK — searching..."
+            find android -name '*.apk' 2>/dev/null
+            exit 1
+          fi
+          ls -la "$APK"
+
+      - name: Upload APK to release
+        if: success()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.ref_name }} android/app/build/outputs/apk/release/app-release.apk --clobber
