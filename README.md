@@ -1,33 +1,68 @@
 # ProFlow 🚀
 
-**All-in-One Productivity Workspace** — A desktop productivity app built with Electron + Next.js.
+**All-in-One Productivity Workspace** — A cross-platform productivity app built with Electron + Next.js + Capacitor.
 
-Track tasks, habits, goals, calendar events, and deep work sessions — all in one dark-themed, beautifully animated app.
+Track tasks, habits, goals, checklists, calendar events, deep work sessions, and notes — all in one dark-themed, beautifully animated app. Sync between your PC and phone over LAN.
 
 ![Dashboard](https://img.shields.io/badge/status-active-brightgreen)
 ![Electron](https://img.shields.io/badge/electron-33-blue)
 ![Next.js](https://img.shields.io/badge/next.js-16-black)
+![Android](https://img.shields.io/badge/android-capacitor-green)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
 
 ## ✨ Features
 
+### Core Productivity
+
 | Feature | Description |
 |---------|-------------|
-| 📊 **Dashboard** | Stats overview, focus hours chart, today's tasks, quick actions |
-| ✅ **Tasks & Projects** | Full task management with categories, status toggles, drag-and-drop reordering |
+| 📊 **Dashboard** | Stats overview, focus hours chart, checklist progress, habit streaks, quick actions |
+| ✅ **Tasks & Projects** | Full task management with categories, status toggles, auto-complete with 1-day restore |
+| ☑️ **Checklists** | Dedicated checklist app — create lists, check items, earn XP, archive completed lists |
 | 🗓️ **Calendar** | Week & month view with time-blocking, drag-and-drop events, color picker |
-| 📝 **Notes & Docs** | Quick notes with tags |
-| 🎯 **Habits & Goals** | Track daily routines and goal progress with streak tracking |
-| ⏱ **Focus Timer** | Pomodoro deep work sessions with play/pause/skip controls |
-| 🎬 **Page Animations** | Smooth fade-in transitions, staggered card animations, hover effects |
-| 🔄 **Auto-Update** | Installs new versions in place — no uninstall, no data loss |
+| 📝 **Notes & Docs** | Quick notes with tags, drag-and-drop reordering |
+| 🎯 **Habits & Goals** | Track daily routines with streak calendar, reminder scheduling, and shield protection |
+| ⏱ **Focus Timer** | Pomodoro deep work sessions with play/pause/skip, continues in background |
+
+### Gamification & Rewards
+
+| Feature | Description |
+|---------|-------------|
+| 🏆 **XP System** | Earn XP for completing tasks (+10), habits (+15), focus sessions (+20), checklist items (+5) |
+| 🛡️ **Streak Shields** | Protect your habit streaks from missed days |
+| 🎖️ **Achievements** | Unlock badges for milestones and consistent behavior |
+| 📈 **Progress View** | XP history, achievements cabinet, streak stats, focus log |
+
+### Cross-Platform
+
+| Feature | Description |
+|---------|-------------|
+| 💻 **Desktop App** | Native Windows installer via Electron — auto-updates in place |
+| 📱 **Android APK** | Native Android app via Capacitor — auto-updates over the air |
+| 📲 **Phone Widgets** | Today at a Glance, Quick Add, Habit tracker, Task tracker widgets |
+| 🔄 **LAN Sync** | Sync between PC and phone on the same WiFi — additive merge, never deletes data |
+
+### Reminders & Notifications
+
+| Feature | Description |
+|---------|-------------|
+| 🔔 **Habit Reminders** | Schedule daily reminders per habit — works on both phone and PC |
+| 📢 **Device Notifications** | Native OS notifications (Android 13+ and desktop) |
+| 🛡️ **Shield Undo** | Undo accidental shield usage within a short window |
+
+### UX & Polish
+
+| Feature | Description |
+|---------|-------------|
+| 🎨 **9 Accent Colors** | Purple, Blue, Indigo, Green, Teal, Cyan, Orange, Amber, Rose |
+| 🎬 **Page Animations** | Smooth fade-in transitions, spring animations, staggered card reveals |
 | ⌨️ **Command Palette** | Press `⌘P` / `Ctrl+P` to search views, create tasks, navigate |
 | 🧘 **Focus Mode** | Distraction-free mode hiding sidebar and topbar |
 | 🎉 **Welcome Tour** | 8-step onboarding overlay on first visit |
-| 💡 **Tooltip Hints** | Gentle sidebar tooltips for the first few sessions |
 | 💾 **Local Persistence** | All data saves to localStorage — survives reloads |
+| 🐛 **Error Boundary** | Shows crash reason on screen instead of blank white page |
 
 ---
 
@@ -75,23 +110,34 @@ changes — it always points at the newest build:
 > after a `next build` to produce the signed APK locally (the signing keystore lives in
 > `android/app/proflow-release.keystore` with `keystore.properties`).
 
-> 🔐 **Signing note:** the keystore and its password are committed for convenience so the
-> CI build works out of the box. The workflow already honors the `ANDROID_KEYSTORE_PASSWORD`
-> and `ANDROID_KEY_PASSWORD` GitHub secrets — to harden a public release, set those secrets,
-> remove `keystore.properties`, and rotate the keystore.
+### 3️⃣ 🔄 Syncing Between PC and Phone
+
+ProFlow supports **LAN sync** — syncing data between your desktop and phone on the same WiFi network. No internet required, no cloud services, no accounts.
+
+**How it works:**
+
+1. **On your PC:** Go to **Settings → LAN sync** → Click **Start server**
+2. **On your phone:** Go to **Settings → LAN sync** → Enter the URL shown on your PC (e.g. `http://192.168.1.5:7777`)
+3. **Toggle "Auto-sync to desktop"** ON — your phone pushes new items to the PC every 30 seconds
+
+**Key behavior:**
+- ✨ **Additive merge** — new tasks, habits, checklists, notes added on phone appear on PC
+- 🔒 **Never deletes** — items deleted on phone are NOT removed from PC
+- 🔢 **Smart counters** — XP, streaks, and achievements take the higher value on both devices
+- ⏱ **Auto-sync** — toggle pushes data every 30 seconds when enabled
+
+> ⚠️ Both devices must be on the **same WiFi network**. If your router has "AP isolation" or "client isolation" enabled, disable it for LAN sync to work.
 
 ---
 
 ## 📸 Screenshots
 
-<img width="464" height="290" alt="Screenshot 2026-08-02 004747" src="https://github.com/user-attachments/assets/73bf1b3b-4067-437b-a469-aeb6e8c4ee44" />
-<img width="464" height="290" alt="Screenshot 2026-08-02 004836" src="https://github.com/user-attachments/assets/31f82ae0-4880-4025-9928-835a7f551e67" />
-<img width="464" height="290" alt="Screenshot 2026-08-02 004859" src="https://github.com/user-attachments/assets/01a1c4fb-534a-43a6-ad50-691f541d5e1d" />
-<img width="464" height="290" alt="Screenshot 2026-08-02 004914" src="https://github.com/user-attachments/assets/02d34eb3-9ecc-4f7c-a54f-0de5db0f1560" />
-<img width="464" height="290" alt="Screenshot 2026-08-02 004925" src="https://github.com/user-attachments/assets/abdd8ec3-69e7-4e85-a0bc-c8d92a10aadf" />
-<img width="464" height="290" alt="image" src="https://github.com/user-attachments/assets/1d765d12-15fe-4ffe-a6ae-1d59acb51c68" />
-
-
+<img width="464" height="290" alt="Dashboard" src="https://github.com/user-attachments/assets/73bf1b3b-4067-437b-a469-aeb6e8c4ee44" />
+<img width="464" height="290" alt="Tasks" src="https://github.com/user-attachments/assets/31f82ae0-4880-4025-9928-835a7f551e67" />
+<img width="464" height="290" alt="Calendar" src="https://github.com/user-attachments/assets/01a1c4fb-534a-43a6-ad50-691f541d5e1d" />
+<img width="464" height="290" alt="Focus" src="https://github.com/user-attachments/assets/02d34eb3-9ecc-4f7c-a54f-0de5db0f1560" />
+<img width="464" height="290" alt="Habits" src="https://github.com/user-attachments/assets/abdd8ec3-69e7-4e85-a0bc-c8d92a10aadf" />
+<img width="464" height="290" alt="Notes" src="https://github.com/user-attachments/assets/1d765d12-15fe-4ffe-a6ae-1d59acb51c68" />
 
 ---
 
@@ -107,7 +153,7 @@ changes — it always points at the newest build:
 ```bash
 # Clone the repo
 git clone https://github.com/Parthiv2610/proflow.git
-cd pro-flow
+cd proflow
 
 # Install dependencies
 pnpm install
@@ -126,6 +172,19 @@ pnpm dev
 
 # In another terminal — launch Electron
 pnpm electron:dev
+```
+
+### Run the Android app
+
+```bash
+# Build the static export
+pnpm build
+
+# Sync to Android
+pnpm exec cap sync android
+
+# Open in Android Studio or run on device
+cd android && ./gradlew installDebug
 ```
 
 ---
@@ -150,64 +209,61 @@ pnpm build
 pnpm electron:build:win
 ```
 
-The installer will be in `release/ProFlow Setup 2.0.0.exe`.
+The installer will be in `release/ProFlow Setup.exe`.
 
-### Build the portable .exe (no installer)
+### Build the Android APK
 
 ```bash
-# Using electron-packager directly
+# 1. Build the static export
 pnpm build
-npx electron-packager . ProFlow --platform=win32 --arch=x64 --out=release --overwrite --icon=build/icon.png
+
+# 2. Sync to Android
+pnpm exec cap sync android
+
+# 3. Build signed APK
+cd android && ./gradlew assembleRelease
 ```
 
-### Build the NSIS installer
-
-```bash
-# Using the convenience script (recommended)
-build.bat
-```
+The APK will be at `android/app/build/outputs/apk/release/app-release.apk`.
 
 ---
 
 ## 🧱 Project Structure
 
 ```
-pro-flow/
+proflow/
 ├── app/                      # Next.js app router pages
 ├── components/
 │   ├── proflow/              # Main app components
-│   │   ├── views/            # Dashboard, Tasks, Calendar, etc.
-│   │   ├── store.tsx         # Zustand-like global state
+│   │   ├── views/            # Dashboard, Tasks, Calendar, Habits, Checklists, Notes, etc.
+│   │   ├── store.tsx         # Global state (tasks, habits, XP, streaks, etc.)
 │   │   ├── sidebar.tsx       # Navigation sidebar
 │   │   ├── topbar.tsx        # Top header bar
+│   │   ├── bottom-tabs.tsx   # Mobile bottom navigation
+│   │   ├── streak-calendar.tsx # Habit streak calendar component
+│   │   ├── error-boundary.tsx  # Crash screen with error details
 │   │   └── ui.tsx            # Shared UI components (Card, Button, etc.)
 │   └── ui/                   # shadcn-style UI primitives
 ├── electron/
-│   ├── main.js               # Electron main process
+│   ├── main.js               # Electron main process (window, LAN server, auto-update)
 │   └── preload.js            # Preload script (IPC bridge)
 ├── lib/                      # Utility functions
 │   ├── use-local-storage.ts  # localStorage persistence hook
-│   └── use-update.ts         # Shared auto-update state machine (desktop + Android)
+│   ├── use-update.ts         # Auto-update state machine (desktop + Android)
+│   ├── lan-sync.ts           # LAN sync client/server + additive merge
+│   ├── widget-bridge.ts      # Android widget communication
+│   ├── notify.ts             # Notification scheduling
+│   └── auto-backup.ts        # Auto-backup before updates
+├── android/                  # Capacitor Android project
+│   ├── app/src/main/java/    # Java: widgets, notifications, backup plugin
+│   └── app/src/main/res/     # Android resources, layouts, icons
 ├── public/                   # Static assets
-├── build/                    # App icon (used by electron-builder + build.bat)
+├── build/                    # App icon (used by electron-builder)
 │   └── icon.png
-├── build.bat                 # One-command desktop build (Next export + electron-builder)
-├── clean.bat                 # Removes build caches and release intermediates
+├── capacitor.config.ts       # Capacitor config (Android app settings)
+├── next.config.mjs           # Next.js config (static export)
 └── package.json
 ```
-
----
-
-## 📦 Submission to Microsoft SmartScreen
-
-To stop SmartScreen warnings when users download the installer:
-
-1. Go to [Microsoft Security Intelligence File Submission](https://www.microsoft.com/en-us/wdsi/filesubmission)
-2. Upload the signed `ProFlow-Setup.exe`
-3. Mark it as "Clean file"
-4. Submit and wait 24–48 hours for review
-
-See `SMARTSCREEN_SUBMISSION.md` for full instructions.
 
 ---
 
@@ -218,10 +274,28 @@ See `SMARTSCREEN_SUBMISSION.md` for full instructions.
 | [Next.js 16](https://nextjs.org/) | React framework (static export) |
 | [React 19](https://react.dev/) | UI library |
 | [Electron 33](https://www.electronjs.org/) | Desktop app shell |
+| [Capacitor](https://capacitorjs.com/) | Android native shell |
 | [Tailwind CSS 4](https://tailwindcss.com/) | Utility-first CSS |
 | [Lucide React](https://lucide.dev/) | Icons |
 | [NSIS](https://nsis.sourceforge.io/) | Windows installer |
 | [pnpm](https://pnpm.io/) | Package manager |
+
+---
+
+## 📦 Release History
+
+| Version | Highlights |
+|---------|-----------|
+| **v5.1.0** | Additive LAN sync — mobile additions merge to desktop, never deletes |
+| **v5.0.0** | LAN sync, sidebar polish, error boundary, mobile stability fixes |
+| **v4.1.0** | Fresh Electron build, fixed installer loading |
+| **v3.5.0** | Checklist XP, inline toggles, sidebar dividers, auto-backup |
+| **v3.4.0** | Focus timer bg fix, streak calendar, shield undo, native notifications |
+| **v3.3.0** | Dashboard visual refresh — gradients, color-coded cards |
+| **v3.2.0** | Simplified UI + spring animations |
+| **v3.1.1** | Interactive widgets + export fix |
+| **v3.1.0** | Checklists, habit reminders, widgets, streak calendar |
+| **v3.0.0** | Notes knowledge base, keyboard & dashboard polish |
 
 ---
 
@@ -245,4 +319,4 @@ Feel free to use, modify, and distribute.
 
 ---
 
-Built with ❤️ using Electron + Next.js
+Built with ❤️ using Electron + Next.js + Capacitor
