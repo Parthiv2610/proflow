@@ -104,6 +104,18 @@ jobs:
         run: |
           grep -q 'ANDROID_KEYSTORE_FILE' android/app/build.gradle && echo "Signing config OK" || echo "WARNING: signing config missing after cap sync"
 
+      - name: Debug environment
+        run: |
+          echo "=== Java ==="
+          java -version 2>&1
+          echo "=== ANDROID_HOME ==="
+          echo "$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms/" 2>/dev/null || echo "No platforms dir"
+          echo "=== Gradle version ==="
+          cd android && chmod +x ./gradlew && ./gradlew --version 2>&1 | head -5
+          echo "=== Local properties ==="
+          cat android/local.properties 2>/dev/null
+
       - name: Build APK
         working-directory: android
         env:
