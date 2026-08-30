@@ -16,7 +16,7 @@ function dayKey(d: Date) {
 }
 
 export function FocusChart() {
-  const { focusLog, tasks, recurringLog } = useStore()
+  const { focusLog, completedTasks, recurringLog } = useStore()
   const [hover, setHover] = useState<number | null>(null)
 
   // Real data — the last 7 days ending today, built from recorded focus
@@ -32,12 +32,12 @@ export function FocusChart() {
         day: d.toLocaleDateString("en-US", { weekday: "short" }),
         focus: entry ? Math.round((entry.minutes / 60) * 10) / 10 : 0,
         tasks:
-          tasks.filter((t) => t.completedAt === key).length +
+          completedTasks.filter((t) => t.completedAt === key).length +
           recurringLog.filter((d) => d === key).length,
       })
     }
     return pts
-  }, [focusLog, tasks, recurringLog])
+  }, [focusLog, completedTasks, recurringLog])
 
   const weekHours = data.reduce((s, d) => s + d.focus, 0)
   const allZero = data.every((d) => d.focus === 0 && d.tasks === 0)
@@ -65,7 +65,7 @@ export function FocusChart() {
         </div>
         <div className="flex items-center gap-4">
           <Legend color="var(--primary)" label="Focus hrs" />
-          <Legend color="var(--focus)" label="Tasks done" />
+          <Legend color="var(--color-success, #22c55e)" label="Tasks done" />
           <span className="rounded-md bg-success/15 px-2 py-1 text-xs font-semibold text-success">
             {weekHours > 0 ? `${weekHours.toFixed(1)}h this week` : "No sessions yet"}
           </span>
@@ -119,12 +119,12 @@ export function FocusChart() {
 
             <polygon points={focusArea} fill="url(#focusFill)" />
             <polyline points={focusLine} fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            <polyline points={tasksLine} fill="none" stroke="var(--focus)" strokeWidth="2.5" strokeDasharray="2 5" strokeLinecap="round" />
+            <polyline points={tasksLine} fill="none" stroke="var(--color-success, #22c55e)" strokeWidth="2.5" strokeDasharray="2 5" strokeLinecap="round" />
 
             {data.map((d, i) => (
               <g key={d.day}>
                 <circle cx={x(i)} cy={yFocus(d.focus)} r={hover === i ? 5 : 3.5} fill="var(--primary)" />
-                <circle cx={x(i)} cy={yTasks(d.tasks)} r={hover === i ? 5 : 3.5} fill="var(--focus)" />
+                <circle cx={x(i)} cy={yTasks(d.tasks)} r={hover === i ? 5 : 3.5} fill="var(--color-success, #22c55e)" />
                 <text x={x(i)} y={H - 4} textAnchor="middle" className="fill-muted-foreground text-[11px]">
                   {d.day}
                 </text>
@@ -143,7 +143,7 @@ export function FocusChart() {
                     <text x={x(i)} y={yFocus(d.focus) - 30} textAnchor="middle" className="fill-primary text-[11px] font-semibold">
                       {d.focus}h focus
                     </text>
-                    <text x={x(i)} y={yFocus(d.focus) - 16} textAnchor="middle" className="fill-focus text-[11px] font-semibold">
+                    <text x={x(i)} y={yFocus(d.focus) - 16} textAnchor="middle" className="text-[11px] font-semibold" fill="var(--color-success, #22c55e)">
                       {d.tasks} tasks done
                     </text>
                   </g>
