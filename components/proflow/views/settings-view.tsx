@@ -73,6 +73,18 @@ export function SettingsView() {
   const [exportedPath, setExportedPath] = useState<string | null>(null)
   // Parsed backup waiting for confirmation — import replaces current data.
   const [pendingImport, setPendingImport] = useState<Record<string, string> | null>(null)
+  // Rolling backup status
+  const [lastBackup, setLastBackup] = useState<{ savedAt: string | null; keyCount: number }>({ savedAt: null, keyCount: 0 })
+
+  useEffect(() => {
+    const api = (window as any).electronAPI
+    if (!api?.rollingLoad) return
+    api.rollingLoad().then((res: any) => {
+      if (res?.found && res?.data) {
+        setLastBackup({ savedAt: res.savedAt || null, keyCount: Object.keys(res.data).length })
+      }
+    }).catch(() => {})
+  }, [])
 
   // ── LAN sync ──
   const lanCfg = getLanConfig()
@@ -555,6 +567,15 @@ export function SettingsView() {
           </div>
         ) : (
           <p className="mt-3 text-xs text-muted-foreground">Importing replaces current data and restarts the app.</p>
+        )}
+
+        {lastBackup.savedAt && (
+          <div className="mt-3 flex items-center gap-2 rounded-lg bg-success/10 border border-success/20 px-3 py-2">
+            <span className="size-1.5 rounded-full bg-success animate-pulse" />
+            <span className="text-xs text-success font-medium">
+              Rolling backup active — {lastBackup.keyCount} items saved {new Date(lastBackup.savedAt).toLocaleTimeString()}
+            </span>
+          </div>
         )}
 
         {importError && (
