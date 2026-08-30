@@ -1506,6 +1506,10 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       setRunning(true)
     } else {
       setRunning(false)
+      // Reset timer to the session duration so it shows a fresh countdown.
+      const desired = (mode === "focus" ? focusMinutes : breakMinutes) * 60
+      setTotalSeconds(desired)
+      setSecondsLeft(desired)
     }
   }, [secondsLeft, running, mode, prefs, applyMode, totalPomodoros, recordFocusSession, clearPersistedTimer])
 
