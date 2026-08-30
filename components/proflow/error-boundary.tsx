@@ -52,28 +52,19 @@ export class ErrorBoundary extends React.Component<Props, State> {
                 </pre>
               </details>
             )}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  this.setState({ error: null })
-                  window.location.reload()
-                }}
-                className="flex-1 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-              >
-                Reload app
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  try { localStorage.clear() } catch {}
-                  window.location.reload()
-                }}
-                className="flex-1 rounded-xl border border-border bg-secondary px-4 py-2 text-sm font-medium text-foreground hover:bg-secondary/80"
-              >
-                Clear data & reload
-              </button>
-            </div>
+            <p className="mb-4 text-xs text-muted-foreground">
+              Your data is safe — it&apos;s backed up automatically. Reload the app and your data will be restored.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                this.setState({ error: null })
+                window.location.reload()
+              }}
+              className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Reload app
+            </button>
           </div>
         </div>
       )
