@@ -111,10 +111,14 @@ jobs:
           echo "=== ANDROID_HOME ==="
           echo "$ANDROID_HOME"
           ls "$ANDROID_HOME/platforms/" 2>/dev/null || echo "No platforms dir"
-          echo "=== Gradle version ==="
-          cd android && chmod +x ./gradlew && ./gradlew --version 2>&1 | head -5
+          echo "=== Android SDK build-tools ==="
+          ls "$ANDROID_HOME/build-tools/" 2>/dev/null || echo "No build-tools"
           echo "=== Local properties ==="
           cat android/local.properties 2>/dev/null
+          echo "=== Capacitor Android module ==="
+          ls node_modules/@capacitor/android/ 2>/dev/null | head -5 || echo "No capacitor android module"
+          echo "=== capacitor.settings.gradle ==="
+          cat android/capacitor.settings.gradle 2>/dev/null
 
       - name: Build APK
         working-directory: android
