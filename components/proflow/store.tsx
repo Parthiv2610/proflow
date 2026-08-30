@@ -1507,6 +1507,10 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
       setRunning(true)
     } else {
       setRunning(false)
+      // Reset timer to configured duration so it's ready for next session
+      const resetTo = (mode === "focus" ? focusMinutes : breakMinutes) * 60
+      setTotalSeconds(resetTo)
+      setSecondsLeft(resetTo)
     }
   }, [secondsLeft, running, mode, prefs, applyMode, totalPomodoros, recordFocusSession, clearPersistedTimer])
 

@@ -23,12 +23,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   timerShow: () => ipcRenderer.invoke("timer:show"),
   timerHide: () => ipcRenderer.invoke("timer:hide"),
   timerUpdate: (data) => ipcRenderer.invoke("timer:update", data),
-  onTimerToggle: (cb) => { ipcRenderer.on("timer:toggle", cb); },
-  onTimerSkip: (cb) => { ipcRenderer.on("timer:skip", cb); },
-  onTimerToggleAutoBreak: (cb) => { ipcRenderer.on("timer:toggleAutoBreak", cb); },
+  onTimerToggle: (cb) => { ipcRenderer.on("timer:toggle", cb); return () => ipcRenderer.removeListener("timer:toggle", cb); },
+  onTimerSkip: (cb) => { ipcRenderer.on("timer:skip", cb); return () => ipcRenderer.removeListener("timer:skip", cb); },
+  onTimerToggleAutoBreak: (cb) => { ipcRenderer.on("timer:toggleAutoBreak", cb); return () => ipcRenderer.removeListener("timer:toggleAutoBreak", cb); },
   // Rolling backup (survives localStorage clears)
   rollingSave: (data) => ipcRenderer.invoke("backup:rollingSave", data),
   rollingLoad: () => ipcRenderer.invoke("backup:loadRolling"),
   // LAN sync: receive pushed data from server
-  onLanPushed: (cb) => { ipcRenderer.on("lan-sync:pushed", (_e, data) => cb(data)); },
+  onLanPushed: (cb) => { const handler = (_e, data) => cb(data); ipcRenderer.on("lan-sync:pushed", handler); return () => ipcRenderer.removeListener("lan-sync:pushed", handler); },
 });

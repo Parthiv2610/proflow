@@ -37,9 +37,12 @@ export function FloatingTimer() {
   // Listen for controls from the native window
   useEffect(() => {
     if (!api) return
-    api.onTimerToggle(() => { running ? pauseTimer() : startTimer() })
-    api.onTimerSkip(() => { skipTimer() })
-    api.onTimerToggleAutoBreak(() => { togglePref("autoBreaks") })
+    const unsubs = [
+      api.onTimerToggle(() => { running ? pauseTimer() : startTimer() }),
+      api.onTimerSkip(() => { skipTimer() }),
+      api.onTimerToggleAutoBreak(() => { togglePref("autoBreaks") }),
+    ]
+    return () => { unsubs.forEach((u) => { if (typeof u === 'function') u() }) }
   }, [api, running, startTimer, pauseTimer, skipTimer, togglePref])
 
   // Cleanup: hide native window on unmount
