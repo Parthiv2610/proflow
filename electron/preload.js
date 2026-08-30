@@ -26,4 +26,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onTimerToggle: (cb) => { ipcRenderer.on("timer:toggle", cb); },
   onTimerSkip: (cb) => { ipcRenderer.on("timer:skip", cb); },
   onTimerToggleAutoBreak: (cb) => { ipcRenderer.on("timer:toggleAutoBreak", cb); },
+  // Rolling backup (survives localStorage clears)
+  rollingSave: (data) => ipcRenderer.invoke("backup:rollingSave", data),
+  rollingLoad: () => ipcRenderer.invoke("backup:loadRolling"),
 });

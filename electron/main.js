@@ -459,6 +459,46 @@ ipcMain.handle("backup:save", async (event, payload) => {
 });
 
 // ---------------------------------------------------------------------------
+// Rolling backup — saves to userData so data survives localStorage clears
+// ---------------------------------------------------------------------------
+const ROLLING_BACKUP_PATH = path.join(app.getPath("userData"), "proflow-rolling-backup.json");
+
+ipcMain.handle("backup:rollingSave", async (event, payload) => {
+  try {
+    const { data } = payload || {};
+    if (!data || typeof data !== "object") return { error: "data required" };
+    const wrapper = {
+      format: "proflow-rolling-backup",
+      version: 2,
+      savedAt: new Date().toISOString(),
+      data: data,
+    };
+    // Atomic write: write to temp then rename
+    const tmpPath = ROLLING_BACKUP_PATH + ".tmp";
+    fs.writeFileSync(tmpPath, JSON.stringify(wrapper, null, 2), "utf-8");
+    fs.renameSync(tmpPath, ROLLING_BACKUP_PATH);
+    log("Rolling backup saved (" + Object.keys(data).length + " keys)");
+    return { ok: true, path: ROLLING_BACKUP_PATH };
+  } catch (err) {
+    log("Rolling backup save failed: " + err.message);
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle("backup:loadRolling", async () => {
+  try {
+    if (!fs.existsSync(ROLLING_BACKUP_PATH)) return { found: false };
+    const content = fs.readFileSync(ROLLING_BACKUP_PATH, "utf-8");
+    const parsed = JSON.parse(content);
+    log("Rolling backup loaded (" + Object.keys(parsed.data || {}).length + " keys)");
+    return { found: true, data: parsed.data, savedAt: parsed.savedAt };
+  } catch (err) {
+    log("Rolling backup load failed: " + err.message);
+    return { found: false, error: err.message };
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Launch
 // ---------------------------------------------------------------------------
 app.whenReady().then(() => {
