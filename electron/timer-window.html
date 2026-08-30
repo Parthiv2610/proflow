@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: rgba(20, 16, 30, 0.92);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(120, 100, 180, 0.3);
+    border-radius: 14px;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    user-select: none;
+    -webkit-app-region: drag;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    -webkit-app-region: drag;
+  }
+  .mode {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+  .mode.focus { background: rgba(139, 92, 246, 0.25); color: #a78bfa; }
+  .mode.break { background: rgba(59, 130, 246, 0.25); color: #60a5fa; }
+  .time {
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 18px;
+    font-weight: 800;
+    color: #e8e0f0;
+    letter-spacing: 1px;
+    tabular-nums: fixed;
+  }
+  .controls {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+    -webkit-app-region: no-drag;
+  }
+  .btn {
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.08);
+    color: #c8c0d8;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: background 0.15s;
+  }
+  .btn:hover { background: rgba(255,255,255,0.18); }
+  .btn svg { width: 12px; height: 12px; }
+  .progress {
+    height: 2px;
+    background: rgba(255,255,255,0.06);
+  }
+  .progress-fill {
+    height: 100%;
+    transition: width 0.5s ease;
+  }
+  .progress-fill.focus { background: rgba(139, 92, 246, 0.5); }
+  .progress-fill.break { background: rgba(59, 130, 246, 0.5); }
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 12px 6px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    -webkit-app-region: no-drag;
+  }
+  .toggle-label { font-size: 10px; color: #8a80a0; }
+  .toggle {
+    width: 28px;
+    height: 16px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+    padding: 0;
+  }
+  .toggle.on { background: #8b5cf6; }
+  .toggle.off { background: rgba(255,255,255,0.15); }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: white;
+    transition: transform 0.2s;
+  }
+  .toggle.on::after { transform: translateX(14px); }
+  .toggle.off::after { transform: translateX(2px); }
+</style>
+</head>
+<body>
+  <div class="main">
+    <div class="mode focus" id="mode">F</div>
+    <div class="time" id="time">25:00</div>
+    <div class="controls">
+      <button class="btn" id="btn-play" title="Pause/Resume">
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+      </button>
+      <button class="btn" id="btn-skip" title="Skip">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 4l10 8-10 8V4zm12 0v16h2V4h-2z"/></svg>
+      </button>
+      <button class="btn" id="btn-close" title="Close">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.3 5.7a1 1 0 00-1.4 0L12 10.6 7.1 5.7a1 1 0 00-1.4 1.4L10.6 12l-4.9 4.9a1 1 0 001.4 1.4L12 13.4l4.9 4.9a1 1 0 001.4-1.4L13.4 12l4.9-4.9a1 1 0 000-1.4z"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="progress"><div class="progress-fill focus" id="progress"></div></div>
+  <div class="toggle-row">
+    <span class="toggle-label">Auto-break</span>
+    <button class="toggle on" id="btn-auto"></button>
+  </div>
+
+<script>
+  const { ipcRenderer } = require('electron');
+
+  function formatTime(s) {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return m + ':' + String(sec).padStart(2, '0');
+  }
+
+  ipcRenderer.on('timer:update', (e, data) => {
+    const { secondsLeft, totalSeconds, mode, running, autoBreak } = data;
+    document.getElementById('time').textContent = formatTime(secondsLeft);
+    const modeEl = document.getElementById('mode');
+    modeEl.textContent = mode === 'focus' ? 'F' : 'B';
+    modeEl.className = 'mode ' + mode;
+    const prog = document.getElementById('progress');
+    const pct = totalSeconds > 0 ? ((totalSeconds - secondsLeft) / totalSeconds * 100) : 0;
+    prog.style.width = pct + '%';
+    prog.className = 'progress-fill ' + mode;
+    // Play/Pause icon
+    const btn = document.getElementById('btn-play');
+    btn.innerHTML = running
+      ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>';
+    // Auto-break toggle
+    const autoBtn = document.getElementById('btn-auto');
+    autoBtn.className = 'toggle ' + (autoBreak ? 'on' : 'off');
+  });
+
+  document.getElementById('btn-play').addEventListener('click', () => ipcRenderer.send('timer:toggle'));
+  document.getElementById('btn-skip').addEventListener('click', () => ipcRenderer.send('timer:skip'));
+  document.getElementById('btn-close').addEventListener('click', () => ipcRenderer.send('timer:close'));
+  document.getElementById('btn-auto').addEventListener('click', () => ipcRenderer.send('timer:toggleAutoBreak'));
+</script>
+</body>
+</html>

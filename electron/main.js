@@ -48,6 +48,7 @@ function getAppVersion() {
 // ---------------------------------------------------------------------------
 let updateState = { status: "idle" };
 let mainWindow = null;
+let timerWindow = null;
 
 function sendUpdateStatus(payload) {
   updateState = { ...updateState, ...payload };
@@ -367,6 +368,80 @@ ipcMain.handle("backup:autoSave", async (event, payload) => {
     return { path: fp };
   } catch (err) { return { error: err.message }; }
 });
+// ---------------------------------------------------------------------------
+// Floating Timer Window (always-on-top, frameless)
+// ---------------------------------------------------------------------------
+function createTimerWindow() {
+  if (timerWindow && !timerWindow.isDestroyed()) {
+    timerWindow.focus();
+    return;
+  }
+  // Position at top-right of screen
+  const { width: sw, height: sh } = require('screen').getPrimaryDisplay().workAreaSize;
+  timerWindow = new BrowserWindow({
+    width: 200,
+    height: 90,
+    x: sw - 220,
+    y: 20,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+  });
+  timerWindow.setAlwaysOnTop(true, 'screen-saver');
+  timerWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  const timerHtml = path.join(__dirname, 'timer-window.html');
+  log('Timer window: ' + timerHtml);
+  timerWindow.loadFile(timerHtml);
+
+  // Click-through on transparent areas
+  timerWindow.setIgnoreMouseEvents(false);
+
+  timerWindow.on('closed', () => { timerWindow = null; });
+}
+
+function destroyTimerWindow() {
+  if (timerWindow && !timerWindow.isDestroyed()) {
+    timerWindow.close();
+    timerWindow = null;
+  }
+}
+
+function sendTimerUpdate(data) {
+  if (timerWindow && !timerWindow.isDestroyed()) {
+    try { timerWindow.webContents.send('timer:update', data); } catch (_) {}
+  }
+}
+
+ipcMain.on('timer:toggle', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('timer:toggle');
+  }
+});
+ipcMain.on('timer:skip', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('timer:skip');
+  }
+});
+ipcMain.on('timer:close', () => {
+  destroyTimerWindow();
+});
+ipcMain.on('timer:toggleAutoBreak', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('timer:toggleAutoBreak');
+  }
+});
+ipcMain.handle('timer:show', () => { createTimerWindow(); return { ok: true }; });
+ipcMain.handle('timer:hide', () => { destroyTimerWindow(); return { ok: true }; });
+ipcMain.handle('timer:update', (event, data) => { sendTimerUpdate(data); return { ok: true }; });
+
 ipcMain.handle("backup:save", async (event, payload) => {
   try {
     const { fileName, content } = payload || {};

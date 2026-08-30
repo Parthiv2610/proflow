@@ -19,4 +19,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getCrashLogPath: () => ipcRenderer.invoke("get-crash-log-path"),
   startLanSync: (opts) => ipcRenderer.invoke("lan-sync:start", opts),
   stopLanSync: () => ipcRenderer.invoke("lan-sync:stop"),
+  // Floating timer window
+  timerShow: () => ipcRenderer.invoke("timer:show"),
+  timerHide: () => ipcRenderer.invoke("timer:hide"),
+  timerUpdate: (data) => ipcRenderer.invoke("timer:update", data),
+  onTimerToggle: (cb) => { ipcRenderer.on("timer:toggle", cb); },
+  onTimerSkip: (cb) => { ipcRenderer.on("timer:skip", cb); },
+  onTimerToggleAutoBreak: (cb) => { ipcRenderer.on("timer:toggleAutoBreak", cb); },
 });
