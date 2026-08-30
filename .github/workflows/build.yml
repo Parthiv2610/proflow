@@ -87,6 +87,9 @@ jobs:
           cp -r out android/app/src/main/assets/public
           echo 'Copied out/ to Android assets'
 
+      - name: Run Capacitor sync
+        run: npx cap sync android
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
