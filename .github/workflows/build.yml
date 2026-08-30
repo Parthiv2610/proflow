@@ -98,7 +98,7 @@ jobs:
           cat android/local.properties
 
       - name: Run Capacitor sync
-        run: npx cap sync android
+        run: pnpm exec cap sync android
 
       - name: Verify signing config
         run: |
@@ -137,6 +137,14 @@ jobs:
             tail -80 /tmp/gradle.log
             exit 1
           fi
+
+      - name: Upload Gradle log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-log
+          path: /tmp/gradle.log
+          if-no-files-found: warn
 
       - name: Find and upload APK
         if: success()
