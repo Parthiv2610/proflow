@@ -92,14 +92,6 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Debug environment
-        run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          ls "$ANDROID_HOME/platforms/" 2>/dev/null || echo "No platforms dir"
-          ls -la app/proflow-release.keystore 2>/dev/null || echo "Keystore missing"
-          cat local.properties 2>/dev/null || echo "No local.properties"
-
       - name: Create local.properties
         run: |
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
@@ -116,20 +108,20 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tail -100
 
-      - name: Verify APK exists
-        if: success()
-        run: |
-          APK=android/app/build/outputs/apk/release/app-release.apk
-          if [ ! -f "$APK" ]; then
-            echo "APK not found at $APK — searching..."
-            find android -name '*.apk' 2>/dev/null
-            exit 1
-          fi
-          ls -la "$APK"
-
-      - name: Upload APK to release
+      - name: Find and upload APK
         if: success()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.ref_name }} android/app/build/outputs/apk/release/app-release.apk --clobber
+          echo "=== Searching for APK ==="
+          APK=$(find android -name '*.apk' -type f | head -1)
+          if [ -z "$APK" ]; then
+            echo "::error::No APK file found after Gradle build"
+            echo "=== Build output tree ==="
+            find android/app/build -type d 2>/dev/null | head -30
+            exit 1
+          fi
+          echo "Found APK: $APK ($(du -h "$APK" | cut -f1))"
+          echo "=== Uploading to release ${{ github.ref_name }} ==="
+          gh release upload "${{ github.ref_name }}" "$APK" --clobber
+          echo "Upload complete!"
