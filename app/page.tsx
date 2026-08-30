@@ -25,6 +25,7 @@ import { WelcomeTour } from "@/components/proflow/welcome-tour"
 import { UpdateBanner } from "@/components/proflow/update-banner"
 import { MilestonePopup } from "@/components/proflow/milestone-popup"
 import { ErrorBoundary } from "@/components/proflow/error-boundary"
+import { FloatingTimer } from "@/components/proflow/floating-timer"
 
 function Workspace() {
   const { view, focusMode, sidebarOpen, closeSidebar } = useStore()
@@ -150,6 +151,9 @@ function Workspace() {
       />
       <CommandPalette open={paletteOpen} onClose={closePalette} onCapture={handleCapture} />
       <WelcomeTour />
+      {/* Floating mini timer — shows when timer runs but user is on another view */}
+      <FloatingTimer />
+
       {/* Confetti + badge popup when an achievement milestone is crossed */}
       <MilestonePopup />
       {showRestorePrompt && (

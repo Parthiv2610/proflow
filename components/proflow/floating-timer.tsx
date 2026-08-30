@@ -1,0 +1,102 @@
+"use client"
+
+import { useState, useRef, useEffect } from "react"
+import { Play, Pause, SkipForward } from "lucide-react"
+import { useStore } from "@/components/proflow/store"
+import { cn } from "@/lib/utils"
+
+function formatTime(s: number) {
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  return `${m}:${sec.toString().padStart(2, "0")}`
+}
+
+export function FloatingTimer() {
+  const { running, secondsLeft, totalSeconds, mode, startTimer, pauseTimer, skipTimer, view } = useStore()
+  const [position, setPosition] = useState({ x: 16, y: 80 })
+  const [dragging, setDragging] = useState(false)
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null)
+
+  // Don't show if timer isn't running or user is on the focus view
+  if (!running || view === "focus") return null
+
+  const progress = ((totalSeconds - secondsLeft) / totalSeconds) * 100
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    setDragging(true)
+    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: position.x, origY: position.y }
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+  }
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!dragging || !dragRef.current) return
+    const dx = e.clientX - dragRef.current.startX
+    const dy = e.clientY - dragRef.current.startY
+    setPosition({
+      x: Math.max(0, Math.min(window.innerWidth - 200, dragRef.current.origX + dx)),
+      y: Math.max(0, Math.min(window.innerHeight - 80, dragRef.current.origY + dy)),
+    })
+  }
+
+  const handlePointerUp = () => {
+    setDragging(false)
+    dragRef.current = null
+  }
+
+  return (
+    <div
+      className={cn(
+        "fixed z-[90] flex items-center gap-2 rounded-xl border border-border bg-background/95 shadow-2xl backdrop-blur-md select-none",
+        dragging ? "cursor-grabbing" : "cursor-grab",
+      )}
+      style={{ left: position.x, top: position.y, width: 180 }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    >
+      {/* Progress bar background */}
+      <div className="absolute inset-0 rounded-xl overflow-hidden">
+        <div
+          className={cn(
+            "absolute inset-y-0 left-0 transition-all duration-500",
+            mode === "focus" ? "bg-primary/10" : "bg-info/10",
+          )}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      <div className="relative flex items-center gap-2 px-3 py-2 w-full">
+        {/* Mode indicator */}
+        <div className={cn(
+          "flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold",
+          mode === "focus" ? "bg-primary/20 text-primary" : "bg-info/20 text-info",
+        )}>
+          {mode === "focus" ? "F" : "B"}
+        </div>
+
+        {/* Time */}
+        <span className="font-mono text-sm font-bold tabular-nums text-foreground">
+          {formatTime(secondsLeft)}
+        </span>
+
+        {/* Controls */}
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); running ? pauseTimer() : startTimer() }}
+            className="size-6 flex items-center justify-center rounded-md hover:bg-accent transition-colors"
+          >
+            {running ? <Pause className="size-3" /> : <Play className="size-3" />}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); skipTimer() }}
+            className="size-6 flex items-center justify-center rounded-md hover:bg-accent transition-colors"
+          >
+            <SkipForward className="size-3" />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
