@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { RefreshCw, Wifi, WifiOff } from "lucide-react"
+import { MonitorSmartphone, RefreshCw, Users, Wifi, WifiOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getSyncState, onSyncStateChange } from "@/lib/sync-state"
 import { getLanConfig } from "@/lib/lan-sync"
@@ -21,6 +21,8 @@ export function SyncIndicator() {
   const [syncing, setSyncingState] = useState(false)
   const [lastSynced, setLastSynced] = useState<Date | null>(null)
   const [hasLanConfig, setHasLanConfig] = useState(false)
+  const [deviceCount, setDeviceCount] = useState(0)
+  const [serverRunning, setServerRunning] = useState(false)
   const [, setTick] = useState(0)
 
   useEffect(() => {
@@ -39,13 +41,58 @@ export function SyncIndicator() {
     })
   }, [])
 
+  // Listen for connected device count (desktop only)
+  useEffect(() => {
+    const api = (window as any).electronAPI
+    if (!api?.onLanDeviceCount) return
+    // Get initial count
+    api.lanDeviceCount?.().then((c: number) => {
+      setDeviceCount(c)
+      setServerRunning(c >= 0)
+    }).catch(() => {})
+    // Listen for updates
+    const unsub = api.onLanDeviceCount((count: number) => {
+      setDeviceCount(count)
+      setServerRunning(true)
+    })
+    return () => { if (typeof unsub === "function") unsub() }
+  }, [])
+
   // Re-render every 30s to update "X ago" text
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 30_000)
     return () => clearInterval(id)
   }, [])
 
-  // Don't show anything if LAN sync isn't configured
+  // Server mode: show device count (desktop only — has electronAPI)
+  const isDesktop = typeof window !== "undefined" && !!(window as any).electronAPI?.isElectron
+  if (isDesktop && serverRunning) {
+    return (
+      <div
+        className={cn(
+          "flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors",
+          deviceCount > 0
+            ? "bg-success/10 text-success"
+            : "bg-muted text-muted-foreground",
+        )}
+        title={`${deviceCount} device${deviceCount !== 1 ? "s" : ""} connected`}
+      >
+        {deviceCount > 0 ? (
+          <Users className="size-3" />
+        ) : (
+          <MonitorSmartphone className="size-3" />
+        )}
+        <span className="hidden sm:inline">
+          {deviceCount > 0
+            ? `${deviceCount} device${deviceCount !== 1 ? "s" : ""}`
+            : "No devices"
+          }
+        </span>
+      </div>
+    )
+  }
+
+  // Client mode: show sync status
   if (!hasLanConfig) return null
 
   return (

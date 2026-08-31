@@ -192,6 +192,22 @@ function showError(msg, detail) {
 // ---------------------------------------------------------------------------
 let lanServer = null;
 let lanData = {};
+let connectedDevices = new Map(); // ip -> lastSeen timestamp
+
+function trackDevice(ip) {
+  connectedDevices.set(ip, Date.now());
+  // Clean up devices not seen in 5 minutes
+  const cutoff = Date.now() - 5 * 60 * 1000;
+  for (const [k, t] of connectedDevices) {
+    if (t < cutoff) connectedDevices.delete(k);
+  }
+}
+
+function sendDeviceCount() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try { mainWindow.webContents.send('lan-sync:devices', connectedDevices.size); } catch (_) {}
+  }
+}
 
 function getLocalIp() {
   const { networkInterfaces } = require("os");
@@ -221,6 +237,11 @@ function startLanHttpServer(port, data) {
           res.end();
           return;
         }
+
+        // Track connected devices
+        const clientIp = req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown';
+        trackDevice(clientIp);
+        sendDeviceCount();
 
         // GET /sync — client pulls data (fetch fresh from renderer)
         if (req.method === "GET" && req.url === "/sync") {
@@ -264,7 +285,7 @@ function startLanHttpServer(port, data) {
 
         // GET / — status page
         res.writeHead(200, { "Content-Type": "text/plain" });
-        res.end("ProFlow LAN Sync is running. Use /sync to exchange data.");
+        res.end("ProFlow LAN Sync is running. Use /sync to exchange data.\nConnected devices: " + connectedDevices.size);
       });
 
       server.on("error", (err) => reject(err));
@@ -364,8 +385,11 @@ ipcMain.handle("lan-sync:start", async (event, opts) => {
 });
 ipcMain.handle("lan-sync:stop", async () => {
   await stopLanHttpServer();
+  connectedDevices.clear();
+  sendDeviceCount();
   return { ok: true };
 });
+ipcMain.handle("lan-sync:deviceCount", () => connectedDevices.size);
 // LAN sync: renderer sends its data here so the server can return it on GET /sync
 ipcMain.handle("lan-sync:getData", async (event, data) => {
   lanData = data || {};
