@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Check, FolderPlus, Plus, Search, Undo2 } from "lucide-react"
+import { Check, FolderPlus, ArrowDownAZ, ArrowUpAZ, Calendar, Clock, Plus, Search, SortAsc, SortDesc, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { DragSortContainer, DragSortItem } from "../drag-sort"
@@ -27,6 +27,34 @@ function projectColor(name: string) {
   return PROJECT_DOT_COLORS[Math.abs(h) % PROJECT_DOT_COLORS.length]
 }
 
+type SortKey = "date-added" | "due-date" | "alphabetical"
+
+const SORT_OPTIONS: { id: SortKey; label: string; icon: typeof SortAsc }[] = [
+  { id: "date-added", label: "Date added", icon: Clock },
+  { id: "due-date", label: "Due date", icon: Calendar },
+  { id: "alphabetical", label: "A → Z", icon: ArrowDownAZ },
+]
+
+function sortTasks(tasks: Task[], sortKey: SortKey, desc: boolean): Task[] {
+  const sorted = [...tasks].sort((a, b) => {
+    switch (sortKey) {
+      case "date-added": {
+        const ca = a.createdAt || ""
+        const cb = b.createdAt || ""
+        return ca.localeCompare(cb)
+      }
+      case "due-date": {
+        const da = a.due || "9999-99-99"
+        const db = b.due || "9999-99-99"
+        return da.localeCompare(db)
+      }
+      case "alphabetical":
+        return a.title.localeCompare(b.title)
+    }
+  })
+  return desc ? sorted.reverse() : sorted
+}
+
 export function TasksView({
   onCapture,
   onNewProject,
@@ -36,6 +64,8 @@ export function TasksView({
 }) {
   const { tasks, completedTasks, projects, search, setSearch, cycleTaskStatus, deleteTask, reorderTasks, restoreTask } = useStore()
   const [status, setStatus] = useState<TaskStatus | "all" | "recently-completed">("all")
+  const [sortKey, setSortKey] = useState<SortKey>("date-added")
+  const [sortDesc, setSortDesc] = useState(false)
   // The task currently being edited — opens the capture dialog in edit mode.
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   // "all" shows every task; "" is the Inbox (tasks without a project); any other
@@ -85,7 +115,7 @@ export function TasksView({
         return true
       })
     }
-    return tasks.filter((t) => {
+    const result = tasks.filter((t) => {
       if (status !== "all" && t.status !== status) return false
       if (projectTab === "all") {
         // no project filter — everything
@@ -97,7 +127,8 @@ export function TasksView({
       if (q && !`${t.title} ${t.project}`.toLowerCase().includes(q)) return false
       return true
     })
-  }, [tasks, completedTasks, status, projectTab, search])
+    return sortTasks(result, sortKey, sortDesc)
+  }, [tasks, completedTasks, status, projectTab, search, sortKey, sortDesc])
 
   // On a single tab (Inbox or one project) show a flat list; on "All" group by
   // project so each project is still its own section.
@@ -117,7 +148,7 @@ export function TasksView({
       .map(([proj, list]) => ({
         project: proj === "" ? "No project" : proj,
         color: proj === "" ? "muted-foreground" : projectColor(proj),
-        tasks: list,
+        tasks: sortTasks(list, sortKey, sortDesc),
       }))
   }, [filtered, projects, single])
 
@@ -171,6 +202,36 @@ export function TasksView({
             >
               {f.label}
               <span className="text-xs text-muted-foreground">{counts[f.id]}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Sort controls */}
+        <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1">
+          {SORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => {
+                if (sortKey === opt.id) {
+                  setSortDesc(!sortDesc)
+                } else {
+                  setSortKey(opt.id)
+                  setSortDesc(false)
+                }
+              }}
+              className={cn(
+                "flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
+                sortKey === opt.id ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+              title={sortKey === opt.id ? (sortDesc ? "Descending" : "Ascending") : opt.label}
+            >
+              {sortKey === opt.id ? (
+                sortDesc ? <SortDesc className="size-3" /> : <SortAsc className="size-3" />
+              ) : (
+                <opt.icon className="size-3" />
+              )}
+              <span className="hidden sm:inline">{opt.label}</span>
             </button>
           ))}
         </div>

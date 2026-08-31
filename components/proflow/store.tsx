@@ -75,6 +75,7 @@ export type Task = {
   due: string
   overdue?: boolean
   completedAt?: string // "YYYY-MM-DD" when marked done — powers the 7-day chart
+  createdAt?: string // ISO timestamp — when the task was added
   // Repeating task: when completed, the task rolls forward to its next
   // occurrence instead of staying done (due advances by a week / a month).
   recurring?: "weekly" | "monthly"
@@ -1654,6 +1655,7 @@ export function ProFlowProvider({ children }: { children: React.ReactNode }) {
         ...t,
         id: `t-${Date.now()}`,
         status: t.status ?? "todo",
+        createdAt: t.createdAt ?? new Date().toISOString(),
       },
       ...prev,
     ])
