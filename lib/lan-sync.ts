@@ -2,6 +2,9 @@
 
 /**
  * True when running inside the Capacitor (Android APK) WebView. */
+import { setSyncing, markSynced } from "./sync-state"
+import { addConflict } from "./conflict-state"
+
 export function isCapacitor(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -83,12 +86,27 @@ function additiveMerge(
       const existingMap = new Map(existingArr.map((item: any) => [item.id, item]))
       let changed = false
       for (const item of incomingValue as any[]) {
-        if (!existingMap.has(item.id)) {
+        const localItem = existingMap.get(item.id)
+        if (!localItem) {
           existingMap.set(item.id, item)
           changed = true
         } else {
-          // Update existing item (latest wins for fields)
-          existingMap.set(item.id, { ...existingMap.get(item.id), ...item })
+          // Detect conflict: both sides modified the same item differently
+          const remoteStr = JSON.stringify(item)
+          const localStr = JSON.stringify(localItem)
+          if (remoteStr !== localStr) {
+            // Find a human-readable label
+            const label = item.name || item.title || item.desc || item.id
+            addConflict({
+              storageKey: key,
+              itemId: item.id,
+              label: String(label).slice(0, 80),
+              local: localItem,
+              remote: item,
+            })
+          }
+          // Default: remote wins (latest)
+          existingMap.set(item.id, { ...localItem, ...item })
         }
       }
       if (changed || incomingValue.length > existingArr.length) {
@@ -199,14 +217,17 @@ export async function stopLanServer(): Promise<void> {
 // ── Client side (Phone / any device) ──
 
 export async function pullFromLan(serverUrl: string): Promise<LanSyncInfo> {
+  setSyncing(true)
   try {
     const url = serverUrl.replace(/\/+$/, "") + "/sync"
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) })
     if (!res.ok) throw new Error(`Server returned HTTP ${res.status} ${res.statusText}`)
     const json = await res.json()
     if (json.data) applyData(json.data)
+    markSynced()
     return { status: "done", url: serverUrl, error: null }
   } catch (e: any) {
+    setSyncing(false)
     let msg = e.message || "Failed to connect"
     msg = explainFetchError(msg, serverUrl)
     return { status: "error", url: serverUrl, error: msg }
@@ -214,6 +235,7 @@ export async function pullFromLan(serverUrl: string): Promise<LanSyncInfo> {
 }
 
 export async function pushToLan(serverUrl: string): Promise<LanSyncInfo> {
+  setSyncing(true)
   try {
     const url = serverUrl.replace(/\/+$/, "") + "/sync"
     const res = await fetch(url, {
@@ -223,8 +245,10 @@ export async function pushToLan(serverUrl: string): Promise<LanSyncInfo> {
       signal: AbortSignal.timeout(10000),
     })
     if (!res.ok) throw new Error(`Server returned HTTP ${res.status} ${res.statusText}`)
+    markSynced()
     return { status: "done", url: serverUrl, error: null }
   } catch (e: any) {
+    setSyncing(false)
     let msg = e.message || "Failed to connect"
     msg = explainFetchError(msg, serverUrl)
     return { status: "error", url: serverUrl, error: msg }

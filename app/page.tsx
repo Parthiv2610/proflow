@@ -27,6 +27,7 @@ import { ErrorBoundary } from "@/components/proflow/error-boundary"
 import { FloatingTimer } from "@/components/proflow/floating-timer"
 import { startAutoSync, pullFromLan, getLanConfig } from "@/lib/lan-sync"
 import { BackupManager } from "@/components/proflow/backup-manager"
+import { ConflictResolver } from "@/components/proflow/conflict-resolver"
 
 function Workspace() {
   const { view, focusMode, sidebarOpen, closeSidebar } = useStore()
@@ -217,6 +218,7 @@ function Workspace() {
       <MilestonePopup />
       {/* Rolling backup manager — auto-saves data & shows restore prompt */}
       <BackupManager />
+      <ConflictResolver />
     </div>
   )
 }

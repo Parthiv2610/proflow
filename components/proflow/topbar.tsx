@@ -5,6 +5,7 @@ import { Bell, Command, Menu, Pause, Play, Plus, Search, Zap } from "lucide-reac
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatTime, useStore } from "./store"
+import { SyncIndicator } from "./sync-indicator"
 
 export function Topbar({ onCapture }: { onCapture: () => void }) {
   const { search, setSearch, setView, secondsLeft, running, toggleTimer, notifications, toggleSidebar, sidebarOpen } = useStore()
@@ -101,6 +102,8 @@ export function Topbar({ onCapture }: { onCapture: () => void }) {
             </span>
           )}
         </button>
+
+        <SyncIndicator />
 
         <span className="hidden size-9 items-center justify-center rounded-xl border border-border bg-secondary/50 text-primary sm:flex">
           <Zap className="size-4" />
