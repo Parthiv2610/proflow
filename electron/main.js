@@ -192,20 +192,29 @@ function showError(msg, detail) {
 // ---------------------------------------------------------------------------
 let lanServer = null;
 let lanData = {};
-let connectedDevices = new Map(); // ip -> lastSeen timestamp
+let connectedDevices = new Map(); // ip -> { name, lastSeen }
 
-function trackDevice(ip) {
-  connectedDevices.set(ip, Date.now());
+function trackDevice(req) {
+  const ip = req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown';
+  const name = req.headers['x-device-name'] || 'Unknown';
+  connectedDevices.set(ip, { name, lastSeen: Date.now() });
   // Clean up devices not seen in 5 minutes
   const cutoff = Date.now() - 5 * 60 * 1000;
-  for (const [k, t] of connectedDevices) {
-    if (t < cutoff) connectedDevices.delete(k);
+  for (const [k, v] of connectedDevices) {
+    if (v.lastSeen < cutoff) connectedDevices.delete(k);
   }
 }
 
-function sendDeviceCount() {
+function getDeviceList() {
+  return Array.from(connectedDevices.entries()).map(([ip, info]) => ({
+    name: info.name,
+    ip: ip.replace(/^::ffff:/, ''),
+  }));
+}
+
+function sendDeviceList() {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    try { mainWindow.webContents.send('lan-sync:devices', connectedDevices.size); } catch (_) {}
+    try { mainWindow.webContents.send('lan-sync:devices', getDeviceList()); } catch (_) {}
   }
 }
 
@@ -239,9 +248,8 @@ function startLanHttpServer(port, data) {
         }
 
         // Track connected devices
-        const clientIp = req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown';
-        trackDevice(clientIp);
-        sendDeviceCount();
+        trackDevice(req);
+        sendDeviceList();
 
         // GET /sync — client pulls data (fetch fresh from renderer)
         if (req.method === "GET" && req.url === "/sync") {
@@ -386,10 +394,10 @@ ipcMain.handle("lan-sync:start", async (event, opts) => {
 ipcMain.handle("lan-sync:stop", async () => {
   await stopLanHttpServer();
   connectedDevices.clear();
-  sendDeviceCount();
+  sendDeviceList();
   return { ok: true };
 });
-ipcMain.handle("lan-sync:deviceCount", () => connectedDevices.size);
+ipcMain.handle("lan-sync:deviceList", () => getDeviceList());
 // LAN sync: renderer sends its data here so the server can return it on GET /sync
 ipcMain.handle("lan-sync:getData", async (event, data) => {
   lanData = data || {};

@@ -12,6 +12,24 @@ export function isCapacitor(): boolean {
   )
 }
 
+/** Get a friendly device name for the current client. */
+function getDeviceName(): string {
+  if (typeof window === "undefined") return "Unknown"
+  const api = (window as any).electronAPI
+  if (api?.isElectron) return "Desktop"
+  if (isCapacitor()) {
+    const ua = navigator.userAgent || ""
+    // Extract device model from User-Agent (e.g. "Pixel 7" from "Pixel 7/13...")
+    const match = ua.match(/\(([^)]+)\)/)
+    const model = match ? match[1].split(";")[0].trim() : ""
+    return model ? `📱 ${model}` : "📱 Phone"
+  }
+  const ua = navigator.userAgent || ""
+  if (/android/i.test(ua)) return "📱 Android"
+  if (/iphone|ipad/i.test(ua)) return "📱 iPhone"
+  return "🌐 Web"
+}
+
 /**
  * LAN Sync — sync data between devices on the same WiFi network.
  *
@@ -220,7 +238,10 @@ export async function pullFromLan(serverUrl: string): Promise<LanSyncInfo> {
   setSyncing(true)
   try {
     const url = serverUrl.replace(/\/+$/, "") + "/sync"
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) })
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(10000),
+      headers: { "X-Device-Name": getDeviceName() },
+    })
     if (!res.ok) throw new Error(`Server returned HTTP ${res.status} ${res.statusText}`)
     const json = await res.json()
     if (json.data) applyData(json.data)
@@ -240,7 +261,7 @@ export async function pushToLan(serverUrl: string): Promise<LanSyncInfo> {
     const url = serverUrl.replace(/\/+$/, "") + "/sync"
     const res = await fetch(url, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Device-Name": getDeviceName() },
       body: JSON.stringify({ data: collectAllData() }),
       signal: AbortSignal.timeout(10000),
     })

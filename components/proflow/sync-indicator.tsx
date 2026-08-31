@@ -21,7 +21,7 @@ export function SyncIndicator() {
   const [syncing, setSyncingState] = useState(false)
   const [lastSynced, setLastSynced] = useState<Date | null>(null)
   const [hasLanConfig, setHasLanConfig] = useState(false)
-  const [deviceCount, setDeviceCount] = useState(0)
+  const [devices, setDevices] = useState<{ name: string; ip: string }[]>([])
   const [serverRunning, setServerRunning] = useState(false)
   const [, setTick] = useState(0)
 
@@ -41,19 +41,20 @@ export function SyncIndicator() {
     })
   }, [])
 
-  // Listen for connected device count (desktop only)
+  // Listen for connected devices (desktop only)
   useEffect(() => {
     const api = (window as any).electronAPI
-    if (!api?.onLanDeviceCount) return
-    // Get initial count
-    api.lanDeviceCount?.().then((c: number) => {
-      setDeviceCount(c)
-      setServerRunning(c >= 0)
+    if (!api?.onLanDevices) return
+    // Get initial list
+    api.lanDeviceList?.().then((list: any) => {
+      if (Array.isArray(list)) {
+        setDevices(list)
+        setServerRunning(true)
+      }
     }).catch(() => {})
     // Listen for updates
-    const unsub = api.onLanDeviceCount((count: number) => {
-      setDeviceCount(count)
-      setServerRunning(true)
+    const unsub = api.onLanDevices((list: any) => {
+      if (Array.isArray(list)) setDevices(list)
     })
     return () => { if (typeof unsub === "function") unsub() }
   }, [])
@@ -64,27 +65,30 @@ export function SyncIndicator() {
     return () => clearInterval(id)
   }, [])
 
-  // Server mode: show device count (desktop only — has electronAPI)
+  // Server mode: show device list (desktop only — has electronAPI)
   const isDesktop = typeof window !== "undefined" && !!(window as any).electronAPI?.isElectron
   if (isDesktop && serverRunning) {
+    const tooltip = devices.length > 0
+      ? devices.map((d) => `${d.name} (${d.ip})`).join("\n")
+      : "No devices connected"
     return (
       <div
         className={cn(
           "flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors",
-          deviceCount > 0
+          devices.length > 0
             ? "bg-success/10 text-success"
             : "bg-muted text-muted-foreground",
         )}
-        title={`${deviceCount} device${deviceCount !== 1 ? "s" : ""} connected`}
+        title={tooltip}
       >
-        {deviceCount > 0 ? (
+        {devices.length > 0 ? (
           <Users className="size-3" />
         ) : (
           <MonitorSmartphone className="size-3" />
         )}
         <span className="hidden sm:inline">
-          {deviceCount > 0
-            ? `${deviceCount} device${deviceCount !== 1 ? "s" : ""}`
+          {devices.length > 0
+            ? devices.map((d) => d.name).join(", ")
             : "No devices"
           }
         </span>

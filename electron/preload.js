@@ -34,7 +34,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // LAN sync: server asks renderer for fresh data
   lanGetData: () => ipcRenderer.invoke("lan-sync:getData"),
   lanSetDataHandler: (cb) => { const handler = (_e, opts) => cb(opts); ipcRenderer.on("lan-sync:wantData", handler); return () => ipcRenderer.removeListener("lan-sync:wantData", handler); },
-  // LAN sync: connected device count
-  lanDeviceCount: () => ipcRenderer.invoke("lan-sync:deviceCount"),
-  onLanDeviceCount: (cb) => { const handler = (_e, count) => cb(count); ipcRenderer.on("lan-sync:devices", handler); return () => ipcRenderer.removeListener("lan-sync:devices", handler); },
+  // LAN sync: connected device list
+  lanDeviceList: () => ipcRenderer.invoke("lan-sync:deviceList"),
+  onLanDevices: (cb) => { const handler = (_e, list) => cb(list); ipcRenderer.on("lan-sync:devices", handler); return () => ipcRenderer.removeListener("lan-sync:devices", handler); },
 });
