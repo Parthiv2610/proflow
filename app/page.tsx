@@ -25,7 +25,7 @@ import { UpdateBanner } from "@/components/proflow/update-banner"
 import { MilestonePopup } from "@/components/proflow/milestone-popup"
 import { ErrorBoundary } from "@/components/proflow/error-boundary"
 import { FloatingTimer } from "@/components/proflow/floating-timer"
-import { startAutoSync, pullFromLan, getLanConfig } from "@/lib/lan-sync"
+import { getCloudConfig } from "@/lib/cloud-sync"
 import { BackupManager } from "@/components/proflow/backup-manager"
 import { ConflictResolver } from "@/components/proflow/conflict-resolver"
 
@@ -71,13 +71,7 @@ function Workspace() {
     closeSidebar()
   }, [view, closeSidebar])
 
-  // Global LAN auto-sync — runs across all views (not just Settings)
-  useEffect(() => {
-    const cfg = getLanConfig()
-    if (!cfg.autoSync || !cfg.lastUrl) return
-    const cleanup = startAutoSync(cfg.lastUrl, () => {})
-    return cleanup
-  }, [])
+  // Cloud auto-sync is handled in settings-view.tsx when connected. No global auto-sync needed here.
 
   // LAN sync: listen for pushed data from the server (desktop receives data from phone)
   useEffect(() => {

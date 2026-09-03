@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils"
 import { useUpdate } from "@/lib/use-update"
 import { isCapacitor } from "@/lib/lan-sync"
 import { showNotification } from "@/lib/notify"
-import { startLanServer, stopLanServer, pullFromLan, pushToLan, getLanConfig, setLanConfig, startAutoSync, type LanSyncInfo } from "@/lib/lan-sync"
+import { getCloudConfig, setCloudConfig, generateUserId, clearCloudConfig, connectCloud, pushToCloud, pullFromCloud, startCloudAutoSync, type CloudSyncInfo } from "@/lib/cloud-sync"
 import { Card, PageHeader } from "../ui"
 import { useStore, ACCENTS, ACHIEVEMENTS } from "../store"
 
@@ -86,24 +86,27 @@ export function SettingsView() {
     }).catch(() => {})
   }, [])
 
-  // ── LAN sync ──
-  const lanCfg = getLanConfig()
-  const [lanUrl, setLanUrl] = useState(lanCfg.lastUrl)
-  const [lanInfo, setLanInfo] = useState<LanSyncInfo>({ status: "idle", url: null, error: null })
-  const [autoSync, setAutoSync] = useState(lanCfg.autoSync || false)
+  // ── Cloud sync ──
+  const cloudCfg = getCloudConfig()
+  const [cloudUrl, setCloudUrl] = useState(cloudCfg?.url || "")
+  const [cloudKey, setCloudKey] = useState(cloudCfg?.anonKey || "")
+  const [cloudInfo, setCloudInfo] = useState<CloudSyncInfo>({ status: "idle", error: null, lastSynced: null, connectedDevices: 0 })
+  const [cloudAutoSync, setCloudAutoSync] = useState(!!cloudCfg)
+  const [showSetupSQL, setShowSetupSQL] = useState(false)
+  const [cloudConnected, setCloudConnected] = useState(!!cloudCfg)
 
-  // Auto-sync effect: when enabled and URL is set, push data every 30s
+  // Auto-sync effect: when connected and enabled, push/pull periodically
   useEffect(() => {
-    if (!autoSync || !lanUrl) return
-    const cleanup = startAutoSync(lanUrl, (result) => {
+    if (!cloudAutoSync || !cloudConnected) return
+    const cleanup = startCloudAutoSync((result) => {
       if (result.status === "error") {
-        setLanInfo(result)
+        setCloudInfo(result)
       } else if (result.status === "done") {
-        setLanInfo({ status: "done", url: lanUrl, error: null })
+        setCloudInfo(result)
       }
     })
     return cleanup
-  }, [autoSync, lanUrl])
+  }, [cloudAutoSync, cloudConnected])
   // Local string state so the user can clear the field while typing without the
   // controlled value snapping back to "0" on every keystroke.
 
@@ -280,34 +283,40 @@ export function SettingsView() {
     }
   }
 
-  // ── LAN sync handlers ──
-  const handleStartServer = async () => {
-    setLanInfo({ status: "starting", url: null, error: null })
-    const result = await startLanServer()
-    setLanInfo(result)
+  // ── Cloud sync handlers ──
+  const handleCloudConnect = async () => {
+    if (!cloudUrl || !cloudKey) { setCloudInfo({ status: "error", error: "Enter Supabase URL and anon key", lastSynced: null, connectedDevices: 0 }); return }
+    const userId = cloudCfg?.userId || generateUserId()
+    setCloudInfo({ status: "connecting", error: null, lastSynced: null, connectedDevices: 0 })
+    setCloudConfig({ url: cloudUrl, anonKey: cloudKey, userId })
+    const result = await connectCloud({ url: cloudUrl.replace(/\/+$/, ""), anonKey: cloudKey, userId })
+    setCloudInfo(result)
+    if (result.status === "done") {
+      setCloudConnected(true)
+      showNotification("ProFlow", "✅ Connected to cloud sync")
+    }
   }
 
-  const handleStopServer = async () => {
-    await stopLanServer()
-    setLanInfo({ status: "idle", url: null, error: null })
+  const handleCloudDisconnect = () => {
+    clearCloudConfig()
+    setCloudConnected(false)
+    setCloudAutoSync(false)
+    setCloudInfo({ status: "idle", error: null, lastSynced: null, connectedDevices: 0 })
+    showNotification("ProFlow", "Cloud sync disconnected")
   }
 
-  const handleLanPull = async () => {
-    if (!lanUrl) { setLanInfo({ ...lanInfo, error: "Enter the server URL" }); return }
-    setLanInfo({ status: "syncing", url: lanUrl, error: null })
-    setLanConfig({ lastUrl: lanUrl })
-    const result = await pullFromLan(lanUrl)
-    setLanInfo(result)
-    if (!result.error) { showNotification("ProFlow", "✅ Data pulled from other device"); window.location.reload() }
+  const handleCloudPush = async () => {
+    setCloudInfo({ status: "syncing", error: null, lastSynced: null, connectedDevices: 0 })
+    const result = await pushToCloud()
+    setCloudInfo(result)
+    if (!result.error) showNotification("ProFlow", "✅ Data pushed to cloud")
   }
 
-  const handleLanPush = async () => {
-    if (!lanUrl) { setLanInfo({ ...lanInfo, error: "Enter the server URL" }); return }
-    setLanInfo({ status: "syncing", url: lanUrl, error: null })
-    setLanConfig({ lastUrl: lanUrl })
-    const result = await pushToLan(lanUrl)
-    setLanInfo(result)
-    if (!result.error) showNotification("ProFlow", "✅ Data pushed to other device")
+  const handleCloudPull = async () => {
+    setCloudInfo({ status: "syncing", error: null, lastSynced: null, connectedDevices: 0 })
+    const result = await pullFromCloud()
+    setCloudInfo(result)
+    if (!result.error) { showNotification("ProFlow", "✅ Data pulled from cloud"); window.location.reload() }
   }
 
   return (
@@ -585,15 +594,15 @@ export function SettingsView() {
         )}
       </Card>
 
-      {/* LAN Sync */}
+      {/* Cloud Sync */}
       <Card className="mt-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              LAN sync
+              Cloud sync
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Sync between devices on the same WiFi. No internet needed.
+              Sync across all your devices — phone, PC, tablet. Works anywhere with internet.
             </p>
             <p className="mt-1 text-[10px] text-success/80">
               ✨ Additive sync — new items are merged, existing data is never deleted.
@@ -605,132 +614,143 @@ export function SettingsView() {
         </div>
 
         <div className="mt-4 space-y-3">
-          {/* Server mode (Desktop) */}
-          <div className="rounded-lg border border-border bg-secondary/20 p-3">
-            <p className="text-xs font-medium text-foreground mb-2">This device as server</p>
-            <p className="text-[10px] text-muted-foreground mb-2">
-              Start a server so other devices can connect and sync data.
-            </p>
-            {lanInfo.status === "running" && lanInfo.url ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 rounded-lg bg-background/60 p-2">
+          {cloudConnected ? (
+            <>
+              {/* Connected status */}
+              <div className="rounded-lg border border-success/30 bg-success/5 p-3">
+                <div className="flex items-center gap-2 mb-1">
                   <Wifi className="size-3.5 text-success" />
-                  <span className="text-xs font-mono text-foreground break-all">{lanInfo.url}</span>
+                  <p className="text-xs font-semibold text-success">Connected to cloud</p>
                 </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Open this URL on your phone's browser to sync. Both devices must be on the same WiFi.
-                </p>
+                <p className="text-[10px] text-muted-foreground">{cloudUrl}</p>
+                {cloudInfo.lastSynced && (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Last synced: {new Date(cloudInfo.lastSynced).toLocaleTimeString()}
+                  </p>
+                )}
+              </div>
+
+              {/* Sync actions */}
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={handleStopServer}
-                  className="flex items-center gap-1.5 rounded-lg border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger/20"
+                  onClick={handleCloudPush}
+                  disabled={cloudInfo.status === "syncing"}
+                  className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
                 >
-                  Stop server
+                  {cloudInfo.status === "syncing" ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
+                  Push data
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCloudPull}
+                  disabled={cloudInfo.status === "syncing"}
+                  className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+                >
+                  {cloudInfo.status === "syncing" ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                  Pull data
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCloudDisconnect}
+                  className="flex items-center gap-1.5 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs font-medium text-danger transition-colors hover:bg-danger/20"
+                >
+                  Disconnect
                 </button>
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={handleStartServer}
-                disabled={lanInfo.status === "starting"}
-                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-              >
-                {lanInfo.status === "starting" ? <Loader2 className="size-3.5 animate-spin" /> : <Wifi className="size-3.5" />}
-                Start server
-              </button>
-            )}
-          </div>
 
-          {/* Client mode (any device) */}
-          <div className="rounded-lg border border-border bg-secondary/20 p-3">
-            <p className="text-xs font-medium text-foreground mb-2">Connect to another device</p>
-            <p className="text-[10px] text-muted-foreground mb-2">
-              Enter the URL shown on the other device's ProFlow settings.
-            </p>
-            {isCapacitor() && (
-              <p className="text-[10px] text-warning mb-2 rounded bg-warning/10 p-1.5">
-                💡 On mobile, use the PC's LAN IP (e.g. http://192.168.1.5:7777). Do NOT use localhost.
-              </p>
-            )}
-            <input
-              type="text"
-              placeholder="http://192.168.x.x:7777"
-              value={lanUrl}
-              onChange={(e) => setLanUrl(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background/60 px-3 py-2 text-sm font-mono outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!lanUrl) return
-                  try {
-                    const res = await fetch(lanUrl.replace(/\/+$/, ""), { signal: AbortSignal.timeout(5000) })
-                    const text = await res.text()
-                    setLanInfo({ status: "done", url: lanUrl, error: null })
-                    alert("✅ Server is reachable!\n\nResponse: " + text.slice(0, 200))
-                  } catch (e: any) {
-                    setLanInfo({ status: "error", url: lanUrl, error: "Cannot reach " + lanUrl + " — " + (e.message || "unknown error") })
-                  }
-                }}
-                disabled={!lanUrl || lanInfo.status === "syncing"}
-                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
-              >
-                <Wifi className="size-3.5" />
-                Test
-              </button>
-              <button
-                type="button"
-                onClick={handleLanPull}
-                disabled={!lanUrl || lanInfo.status === "syncing"}
-                className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
-              >
-                {lanInfo.status === "syncing" ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
-                Pull data
-              </button>
-              <button
-                type="button"
-                onClick={handleLanPush}
-                disabled={!lanUrl || lanInfo.status === "syncing"}
-                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-              >
-                {lanInfo.status === "syncing" ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
-                Push data
-              </button>
-            </div>
-          </div>
+              {/* Auto-sync toggle */}
+              <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/20 p-3">
+                <div>
+                  <p className="text-xs font-medium text-foreground">Auto-sync</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {cloudAutoSync
+                      ? "Syncing every 30s — changes appear on all devices automatically."
+                      : "Manually push/pull to sync."
+                    }
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCloudAutoSync(!cloudAutoSync)}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors ${cloudAutoSync ? "bg-primary" : "bg-muted"}`}
+                >
+                  <span className={`inline-block h-4 w-4 translate-y-0.5 rounded-full bg-white shadow transition-transform ${cloudAutoSync ? "translate-x-4" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Setup instructions */}
+              <div className="rounded-lg border border-border bg-secondary/20 p-3">
+                <p className="text-xs font-medium text-foreground mb-2">Quick setup (2 minutes)</p>
+                <div className="space-y-1.5 text-[10px] text-muted-foreground">
+                  <p>1. Go to <a href="https://supabase.com" target="_blank" rel="noopener" className="text-primary underline">supabase.com</a> → New project (free)</p>
+                  <p>2. Go to SQL Editor → paste the setup SQL</p>
+                  <p>3. Copy Project URL + anon key from Settings → API</p>
+                  <p>4. Paste them below and click Connect</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSetupSQL(!showSetupSQL)}
+                  className="mt-2 flex items-center gap-1 text-[10px] text-primary hover:underline"
+                >
+                  {showSetupSQL ? "Hide" : "Show"} setup SQL
+                </button>
+                {showSetupSQL && (
+                  <pre className="mt-2 rounded-lg bg-background/80 p-2 text-[9px] text-foreground overflow-x-auto max-h-32">
+                    {`CREATE TABLE IF NOT EXISTS proflow_sync (
+  id TEXT PRIMARY KEY DEFAULT 'default',
+  user_id TEXT NOT NULL,
+  data JSONB NOT NULL DEFAULT '{}',
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
-          {/* Auto-sync toggle */}
-          <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/20 p-3">
-            <div>
-              <p className="text-xs font-medium text-foreground">Auto-sync to desktop</p>
-              <p className="text-[10px] text-muted-foreground">
-                {autoSync
-                  ? "Pushing changes every 30s. New tasks, habits, etc. appear on desktop."
-                  : "Automatically push new items to the desktop server."
-                }
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                const next = !autoSync
-                setAutoSync(next)
-                setLanConfig({ autoSync: next })
-              }}
-              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors ${autoSync ? "bg-primary" : "bg-muted"}`}
-            >
-              <span className={`inline-block h-4 w-4 translate-y-0.5 rounded-full bg-white shadow transition-transform ${autoSync ? "translate-x-4" : "translate-x-0.5"}`} />
-            </button>
-          </div>
+ALTER TABLE proflow_sync ENABLE ROW LEVEL SECURITY;
 
-          {lanInfo.error && (
+CREATE POLICY "Allow all for anon" ON proflow_sync
+  FOR ALL USING (true) WITH CHECK (true);`}
+                  </pre>
+                )}
+              </div>
+
+              {/* Credentials */}
+              <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-2">
+                <p className="text-xs font-medium text-foreground mb-2">Enter your Supabase credentials</p>
+                <input
+                  type="text"
+                  placeholder="Project URL (https://xxx.supabase.co)"
+                  value={cloudUrl}
+                  onChange={(e) => setCloudUrl(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background/60 px-3 py-2 text-sm font-mono outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
+                />
+                <input
+                  type="text"
+                  placeholder="Anon key (ey...)"
+                  value={cloudKey}
+                  onChange={(e) => setCloudKey(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background/60 px-3 py-2 text-sm font-mono outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
+                />
+                <button
+                  type="button"
+                  onClick={handleCloudConnect}
+                  disabled={!cloudUrl || !cloudKey || cloudInfo.status === "connecting"}
+                  className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {cloudInfo.status === "connecting" ? <Loader2 className="size-3.5 animate-spin" /> : <Wifi className="size-3.5" />}
+                  Connect
+                </button>
+              </div>
+            </>
+          )}
+
+          {cloudInfo.error && (
             <div className="rounded-lg border border-danger/30 bg-danger/5 p-3">
-              <p className="text-xs font-semibold text-danger mb-1">Connection error</p>
-              <p className="text-xs text-danger/80 break-all">{lanInfo.error}</p>
+              <p className="text-xs font-semibold text-danger mb-1">Error</p>
+              <p className="text-xs text-danger/80 break-all">{cloudInfo.error}</p>
             </div>
           )}
-          {lanInfo.status === "done" && (
+          {cloudInfo.status === "done" && !cloudInfo.error && (
             <div className="rounded-lg border border-success/30 bg-success/5 p-3">
               <p className="text-xs font-semibold text-success">✅ Sync complete</p>
             </div>
